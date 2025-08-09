@@ -16,36 +16,78 @@ class TEI_Ajax_Handler {
      * Obtém coleções disponíveis
      */
     public function get_collections() {
-        // Remove verificação de nonce temporariamente para debug
+        // Verifica nonce
+        if (!check_ajax_referer('tei_admin', 'nonce', false)) {
+            wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
+            return;
+        }
+        
+        // Verifica permissões
+        if (!current_user_can('manage_tainacan_explorer')) {
+            wp_send_json_error(['message' => __('Permissão negada', 'tainacan-explorador')]);
+            return;
+        }
         
         try {
             $collections = [];
             
-            // Busca coleções do Tainacan
-            $args = [
-                'post_type' => 'tainacan-collection',
-                'posts_per_page' => -1,
-                'post_status' => 'publish'
-            ];
-            
-            $query = new WP_Query($args);
-            
-            if ($query->have_posts()) {
-                while ($query->have_posts()) {
-                    $query->the_post();
-                    $collections[] = [
-                        'id' => get_the_ID(),
-                        'name' => get_the_title(),
-                        'items_count' => 0
-                    ];
+            // Verifica se o Tainacan está instalado
+            if (!class_exists('\Tainacan\Repositories\Collections')) {
+                // Tenta carregar o Tainacan
+                $tainacan_plugin_path = WP_PLUGIN_DIR . '/tainacan/tainacan.php';
+                if (file_exists($tainacan_plugin_path)) {
+                    include_once $tainacan_plugin_path;
                 }
-                wp_reset_postdata();
+            }
+            
+            if (class_exists('\Tainacan\Repositories\Collections')) {
+                $repository = \Tainacan\Repositories\Collections::get_instance();
+                
+                $args = [
+                    'posts_per_page' => -1,
+                    'post_status' => 'publish'
+                ];
+                
+                $tainacan_collections = $repository->fetch($args, 'OBJECT');
+                
+                if ($tainacan_collections) {
+                    foreach ($tainacan_collections as $col) {
+                        $collections[] = [
+                            'id' => $col->get_id(),
+                            'name' => $col->get_name(),
+                            'items_count' => $repository->get_items_count($col->get_id())
+                        ];
+                    }
+                }
+            } else {
+                // Fallback usando WP_Query direto
+                $args = [
+                    'post_type' => 'tainacan-collection',
+                    'posts_per_page' => -1,
+                    'post_status' => 'publish'
+                ];
+                
+                $query = new WP_Query($args);
+                
+                if ($query->have_posts()) {
+                    while ($query->have_posts()) {
+                        $query->the_post();
+                        $collections[] = [
+                            'id' => get_the_ID(),
+                            'name' => get_the_title(),
+                            'items_count' => wp_count_posts('tnc_col_' . get_the_ID() . '_item')->publish ?? 0
+                        ];
+                    }
+                    wp_reset_postdata();
+                }
             }
             
             wp_send_json_success($collections);
             
         } catch (Exception $e) {
-            wp_send_json_error(['message' => $e->getMessage()]);
+            wp_send_json_error([
+                'message' => __('Erro ao carregar coleções: ', 'tainacan-explorador') . $e->getMessage()
+            ]);
         }
     }
     
@@ -53,24 +95,183 @@ class TEI_Ajax_Handler {
      * Obtém metadados de uma coleção
      */
     public function get_metadata() {
-        $collection_id = intval($_POST['collection_id'] ?? 0);
-        
-        if (!$collection_id) {
-            wp_send_json_error(['message' => 'ID inválido']);
+        // Verifica nonce
+        if (!check_ajax_referer('tei_admin', 'nonce', false)) {
+            wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
             return;
         }
         
-        $metadata = [
-            ['id' => 'title', 'name' => 'Título', 'type' => 'text'],
-            ['id' => 'description', 'name' => 'Descrição', 'type' => 'text'],
-            ['id' => 'date', 'name' => 'Data', 'type' => 'date'],
-            ['id' => 'location', 'name' => 'Localização', 'type' => 'text'],
-            ['id' => 'image', 'name' => 'Imagem', 'type' => 'text']
-        ];
+        // Verifica permissões
+        if (!current_user_can('manage_tainacan_explorer')) {
+            wp_send_json_error(['message' => __('Permissão negada', 'tainacan-explorador')]);
+            return;
+        }
+        
+        $collection_id = intval($_POST['collection_id'] ?? 0);
+        
+        if (!$collection_id) {
+            wp_send_json_error(['message' => __('ID da coleção inválido', 'tainacan-explorador')]);
+            return;
+        }
+        
+        try {
+            $metadata = [];
+            
+            if (class_exists('\Tainacan\Repositories\Metadata')) {
+                $repository = \Tainacan\Repositories\Metadata::get_instance();
+                $collection = new \Tainacan\Entities\Collection($collection_id);
+                
+                $args = [
+                    'include_disabled' => false
+                ];
+                
+                $tainacan_metadata = $repository->fetch_by_collection($collection, $args, 'OBJECT');
+                
+                if ($tainacan_metadata) {
+                    foreach ($tainacan_metadata as $meta) {
+                        $metadata[] = [
+                            'id' => $meta->get_id(),
+                            'name' => $meta->get_name(),
+                            'type' => $meta->get_metadata_type()
+                        ];
+                    }
+                }
+            } else {
+                // Fallback - busca metadados do post type
+                global $wpdb;
+                
+                $post_type = 'tnc_col_' . $collection_id . '_item';
+                
+                // Busca campos customizados usados neste post type
+                $custom_fields = $wpdb->get_results($wpdb->prepare(
+                    "SELECT DISTINCT meta_key 
+                     FROM {$wpdb->postmeta} pm
+                     JOIN {$wpdb->posts} p ON pm.post_id = p.ID
+                     WHERE p.post_type = %s
+                     AND meta_key NOT LIKE '\_%'",
+                    $post_type
+                ));
+                
+                foreach ($custom_fields as $field) {
+                    $metadata[] = [
+                        'id' => $field->meta_key,
+                        'name' => ucfirst(str_replace('_', ' ', $field->meta_key)),
+                        'type' => 'text'
+                    ];
+                }
+            }
+            
+            // Obtém mapeamentos existentes
+            $existing_mappings = [];
+            $mapping_types = ['map', 'timeline', 'story'];
+            
+            foreach ($mapping_types as $type) {
+                $mapping = TEI_Metadata_Mapper::get_mapping($collection_id, $type);
+                if ($mapping) {
+                    $existing_mappings[$type] = $mapping;
+                }
+            }
+            
+            wp_send_json_success([
+                'metadata' => $metadata,
+                'mappings' => $existing_mappings
+            ]);
+            
+        } catch (Exception $e) {
+            wp_send_json_error([
+                'message' => __('Erro ao carregar metadados: ', 'tainacan-explorador') . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * Salva mapeamento
+     */
+    public function save_mapping() {
+        // Verifica nonce
+        if (!check_ajax_referer('tei_admin', 'nonce', false)) {
+            wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
+            return;
+        }
+        
+        // Verifica permissões
+        if (!current_user_can('manage_tainacan_explorer')) {
+            wp_send_json_error(['message' => __('Permissão negada', 'tainacan-explorador')]);
+            return;
+        }
+        
+        // Debug - log dos dados recebidos
+        error_log('TEI Save Mapping - POST data: ' . print_r($_POST, true));
+        
+        // Valida dados
+        $collection_id = intval($_POST['collection_id'] ?? 0);
+        $collection_name = sanitize_text_field($_POST['collection_name'] ?? '');
+        $mapping_type = sanitize_key($_POST['mapping_type'] ?? '');
+        $mapping_data = $_POST['mapping_data'] ?? [];
+        $visualization_settings = $_POST['visualization_settings'] ?? [];
+        
+        if (!$collection_id || !$mapping_type) {
+            wp_send_json_error(['message' => __('Dados inválidos', 'tainacan-explorador')]);
+            return;
+        }
+        
+        // Sanitiza dados do mapeamento
+        $sanitized_mapping = [];
+        if (is_array($mapping_data)) {
+            foreach ($mapping_data as $key => $value) {
+                $sanitized_mapping[sanitize_key($key)] = sanitize_text_field($value);
+            }
+        }
+        
+        // Sanitiza configurações de visualização
+        $sanitized_settings = [];
+        if (is_array($visualization_settings)) {
+            foreach ($visualization_settings as $key => $value) {
+                if (is_bool($value)) {
+                    $sanitized_settings[sanitize_key($key)] = $value;
+                } elseif (is_numeric($value)) {
+                    $sanitized_settings[sanitize_key($key)] = floatval($value);
+                } else {
+                    $sanitized_settings[sanitize_key($key)] = sanitize_text_field($value);
+                }
+            }
+        }
+        
+        // Valida mapeamento
+        $validation = TEI_Metadata_Mapper::validate_mapping($sanitized_mapping, $mapping_type);
+        if (is_wp_error($validation)) {
+            wp_send_json_error(['message' => $validation->get_error_message()]);
+            return;
+        }
+        
+        // Salva mapeamento
+        $result = TEI_Metadata_Mapper::save_mapping([
+            'collection_id' => $collection_id,
+            'collection_name' => $collection_name,
+            'mapping_type' => $mapping_type,
+            'mapping_data' => $sanitized_mapping,
+            'visualization_settings' => $sanitized_settings
+        ]);
+        
+        // Debug - log do resultado
+        error_log('TEI Save Mapping - Result: ' . print_r($result, true));
+        
+        if (is_wp_error($result)) {
+            wp_send_json_error(['message' => $result->get_error_message()]);
+            return;
+        }
+        
+        if (!$result) {
+            wp_send_json_error(['message' => __('Erro ao salvar mapeamento no banco', 'tainacan-explorador')]);
+            return;
+        }
+        
+        // Limpa cache da coleção
+        TEI_Cache_Manager::clear_collection_cache($collection_id);
         
         wp_send_json_success([
-            'metadata' => $metadata,
-            'mappings' => []
+            'message' => __('Mapeamento salvo com sucesso!', 'tainacan-explorador'),
+            'mapping_id' => $result
         ]);
     }
     
@@ -78,30 +279,46 @@ class TEI_Ajax_Handler {
      * Obtém todos os mapeamentos
      */
     public function get_all_mappings() {
-        wp_send_json_success([
-            'mappings' => [],
-            'total' => 0,
-            'page' => 1,
-            'per_page' => 20
-        ]);
-    }
-    
-    /**
-     * Salva mapeamento
-     */
-    public function save_mapping() {
-        $collection_id = intval($_POST['collection_id'] ?? 0);
-        $mapping_type = sanitize_key($_POST['mapping_type'] ?? '');
-        
-        if (!$collection_id || !$mapping_type) {
-            wp_send_json_error(['message' => 'Dados inválidos']);
+        // Verifica nonce
+        if (!check_ajax_referer('tei_admin', 'nonce', false)) {
+            wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
             return;
         }
         
-        // Simula salvamento
+        // Verifica permissões
+        if (!current_user_can('manage_tainacan_explorer')) {
+            wp_send_json_error(['message' => __('Permissão negada', 'tainacan-explorador')]);
+            return;
+        }
+        
+        $page = intval($_POST['page'] ?? 1);
+        $per_page = intval($_POST['per_page'] ?? 20);
+        $search = sanitize_text_field($_POST['search'] ?? '');
+        $filter_type = sanitize_key($_POST['filter_type'] ?? '');
+        
+        $args = [
+            'limit' => $per_page,
+            'offset' => ($page - 1) * $per_page
+        ];
+        
+        if ($filter_type && $filter_type !== 'all') {
+            $args['mapping_type'] = $filter_type;
+        }
+        
+        $mappings = TEI_Metadata_Mapper::get_all_mappings($args);
+        
+        // Filtra por busca se necessário
+        if ($search) {
+            $mappings = array_filter($mappings, function($mapping) use ($search) {
+                return stripos($mapping['collection_name'], $search) !== false;
+            });
+        }
+        
         wp_send_json_success([
-            'message' => 'Mapeamento salvo!',
-            'mapping_id' => 1
+            'mappings' => array_values($mappings),
+            'total' => count($mappings),
+            'page' => $page,
+            'per_page' => $per_page
         ]);
     }
     
@@ -109,6 +326,34 @@ class TEI_Ajax_Handler {
      * Deleta mapeamento
      */
     public function delete_mapping() {
-        wp_send_json_success(['message' => 'Deletado']);
+        // Verifica nonce
+        if (!check_ajax_referer('tei_admin', 'nonce', false)) {
+            wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
+            return;
+        }
+        
+        // Verifica permissões
+        if (!current_user_can('manage_tainacan_explorer')) {
+            wp_send_json_error(['message' => __('Permissão negada', 'tainacan-explorador')]);
+            return;
+        }
+        
+        $mapping_id = intval($_POST['mapping_id'] ?? 0);
+        
+        if (!$mapping_id) {
+            wp_send_json_error(['message' => __('ID do mapeamento inválido', 'tainacan-explorador')]);
+            return;
+        }
+        
+        $result = TEI_Metadata_Mapper::delete_mapping($mapping_id);
+        
+        if (!$result) {
+            wp_send_json_error(['message' => __('Erro ao deletar mapeamento', 'tainacan-explorador')]);
+            return;
+        }
+        
+        wp_send_json_success([
+            'message' => __('Mapeamento deletado com sucesso!', 'tainacan-explorador')
+        ]);
     }
 }
