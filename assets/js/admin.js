@@ -1,6 +1,5 @@
 /**
- * Explorador Interativo - Admin Interface
- * Interface administrativa usando WordPress React
+ * Explorador Interativo - Admin Interface (CORRIGIDO)
  * 
  * @package TainacanExplorador
  * @version 1.0.0
@@ -11,27 +10,28 @@
     
     const { createElement: el, Fragment, useState, useEffect, useCallback } = wp.element;
     const { Button, Card, CardBody, CardHeader, SelectControl, TextControl, CheckboxControl, Spinner, Notice, TabPanel, Modal, SearchControl } = wp.components;
-    const apiFetch = wp.apiFetch;
     const { __ } = wp.i18n;
     
     const AdminPanel = () => {
         const [collections, setCollections] = useState([]);
         const [selectedCollection, setSelectedCollection] = useState(null);
         const [metadata, setMetadata] = useState([]);
-        const [mappings, setMappings] = useState({});
-        const [visualizationSettings, setVisualizationSettings] = useState({});
+        const [mappings, setMappings] = useState({
+            map: {},
+            timeline: {},
+            story: {}
+        });
+        const [visualizationSettings, setVisualizationSettings] = useState({
+            map: {},
+            timeline: {},
+            story: {}
+        });
         const [loading, setLoading] = useState(false);
         const [saving, setSaving] = useState(false);
-        const [savedMappings, setSavedMappings] = useState([]);
         const [notification, setNotification] = useState(null);
-        const [searchTerm, setSearchTerm] = useState('');
-        const [filterType, setFilterType] = useState('all');
-        const [showDeleteModal, setShowDeleteModal] = useState(false);
-        const [mappingToDelete, setMappingToDelete] = useState(null);
         
         useEffect(() => {
             loadCollections();
-            loadSavedMappings();
         }, []);
         
         const loadCollections = async () => {
@@ -46,35 +46,14 @@
                     }
                 });
                 
-                if (response.success) {
-                    setCollections(response.data || []);
-                } else {
-                    showNotification(response.data?.message || __('Erro ao carregar coleções', 'tainacan-explorador'), 'error');
+                if (response.success && response.data) {
+                    setCollections(response.data);
                 }
             } catch (error) {
                 console.error('Erro:', error);
                 showNotification(__('Erro ao carregar coleções', 'tainacan-explorador'), 'error');
             } finally {
                 setLoading(false);
-            }
-        };
-        
-        const loadSavedMappings = async () => {
-            try {
-                const response = await jQuery.ajax({
-                    url: teiAdmin.ajaxUrl,
-                    type: 'POST',
-                    data: {
-                        action: 'tei_get_all_mappings',
-                        nonce: teiAdmin.ajaxNonce
-                    }
-                });
-                
-                if (response.success) {
-                    setSavedMappings(response.data?.mappings || []);
-                }
-            } catch (error) {
-                console.error('Erro ao carregar mapeamentos:', error);
             }
         };
         
@@ -91,13 +70,23 @@
                     }
                 });
                 
-                if (response.success) {
-                    setMetadata(response.data?.metadata || []);
-                    if (response.data?.mappings) {
-                        setMappings(response.data.mappings);
+                if (response.success && response.data) {
+                    setMetadata(response.data.metadata || []);
+                    // Carrega mapeamentos existentes
+                    if (response.data.mappings) {
+                        const existingMappings = {};
+                        const existingSettings = {};
+                        
+                        ['map', 'timeline', 'story'].forEach(type => {
+                            if (response.data.mappings[type]) {
+                                existingMappings[type] = response.data.mappings[type].mapping_data || {};
+                                existingSettings[type] = response.data.mappings[type].visualization_settings || {};
+                            }
+                        });
+                        
+                        setMappings(existingMappings);
+                        setVisualizationSettings(existingSettings);
                     }
-                } else {
-                    showNotification(response.data?.message || __('Erro ao carregar metadados', 'tainacan-explorador'), 'error');
                 }
             } catch (error) {
                 console.error('Erro:', error);
@@ -136,7 +125,10 @@
         };
         
         const saveMappings = async (mappingType) => {
-            if (!selectedCollection) return;
+            if (!selectedCollection) {
+                showNotification(__('Selecione uma coleção primeiro', 'tainacan-explorador'), 'warning');
+                return;
+            }
             
             setSaving(true);
             try {
@@ -156,124 +148,34 @@
                 
                 if (response.success) {
                     showNotification(__('Mapeamento salvo com sucesso!', 'tainacan-explorador'), 'success');
-                    loadSavedMappings();
                 } else {
                     showNotification(response.data?.message || __('Erro ao salvar', 'tainacan-explorador'), 'error');
                 }
             } catch (error) {
-                console.error('Erro:', error);
+                console.error('Erro ao salvar:', error);
                 showNotification(__('Erro ao salvar mapeamento', 'tainacan-explorador'), 'error');
             } finally {
                 setSaving(false);
             }
         };
         
-        const deleteMapping = async () => {
-            if (!mappingToDelete) return;
-            
-            try {
-                const response = await jQuery.ajax({
-                    url: teiAdmin.ajaxUrl,
-                    type: 'POST',
-                    data: {
-                        action: 'tei_delete_mapping',
-                        mapping_id: mappingToDelete,
-                        nonce: teiAdmin.ajaxNonce
-                    }
-                });
-                
-                if (response.success) {
-                    showNotification(__('Mapeamento excluído', 'tainacan-explorador'), 'info');
-                    setSavedMappings(prev => prev.filter(m => m.id !== mappingToDelete));
-                }
-            } catch (error) {
-                showNotification(__('Erro ao excluir mapeamento', 'tainacan-explorador'), 'error');
-            } finally {
-                setShowDeleteModal(false);
-                setMappingToDelete(null);
+        const testVisualization = (type) => {
+            if (!selectedCollection) {
+                showNotification(__('Selecione uma coleção primeiro', 'tainacan-explorador'), 'warning');
+                return;
             }
+            
+            // Primeiro salva o mapeamento atual
+            saveMappings(type).then(() => {
+                // Abre preview em nova janela
+                const url = `${window.location.origin}/preview?type=${type}&collection=${selectedCollection.id}`;
+                window.open(url, '_blank', 'width=1200,height=800');
+            });
         };
         
         const showNotification = (message, type = 'info') => {
             setNotification({ message, type });
             setTimeout(() => setNotification(null), 5000);
-        };
-        
-        const testVisualization = (type) => {
-            if (!selectedCollection) return;
-            const url = `${window.location.origin}/preview?type=${type}&collection=${selectedCollection.id}`;
-            window.open(url, '_blank');
-        };
-        
-        const filteredMappings = savedMappings.filter(mapping => {
-            const matchesSearch = mapping.collection_name?.toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesFilter = filterType === 'all' || mapping.mapping_type === filterType;
-            return matchesSearch && matchesFilter;
-        });
-        
-        const tabs = [
-            {
-                name: 'map',
-                title: __('Mapa', 'tainacan-explorador'),
-                className: 'tab-map',
-            },
-            {
-                name: 'timeline',
-                title: __('Linha do Tempo', 'tainacan-explorador'),
-                className: 'tab-timeline',
-            },
-            {
-                name: 'story',
-                title: __('Storytelling', 'tainacan-explorador'),
-                className: 'tab-story',
-            }
-        ];
-        
-        const renderMappingForm = (type) => {
-            const fields = getFieldsForType(type);
-            
-            return el('div', { className: 'tei-mapping-form' },
-                el('div', { className: 'tei-form-grid' },
-                    fields.map(field => 
-                        el('div', { key: field.key, className: 'tei-form-group' },
-                            el(SelectControl, {
-                                label: field.label + (field.required ? ' *' : ''),
-                                value: mappings[type]?.[field.key] || '',
-                                options: [
-                                    { label: __('Selecione...', 'tainacan-explorador'), value: '' },
-                                    ...metadata.map(m => ({
-                                        label: `${m.name} (${m.type})`,
-                                        value: m.id
-                                    }))
-                                ],
-                                onChange: (value) => handleMappingChange(type, field.key, value)
-                            })
-                        )
-                    ),
-                    
-                    el('div', { className: 'tei-form-group tei-form-settings' },
-                        el('h4', null, __('Configurações de Visualização', 'tainacan-explorador')),
-                        renderVisualizationSettings(type)
-                    )
-                ),
-                
-                el('div', { className: 'tei-form-actions' },
-                    el(Button, {
-                        isPrimary: true,
-                        isBusy: saving,
-                        disabled: saving || !selectedCollection,
-                        onClick: () => saveMappings(type),
-                        icon: 'saved'
-                    }, saving ? __('Salvando...', 'tainacan-explorador') : __('Salvar Configurações', 'tainacan-explorador')),
-                    
-                    el(Button, {
-                        isSecondary: true,
-                        onClick: () => testVisualization(type),
-                        icon: 'visibility',
-                        style: { marginLeft: '10px' }
-                    }, __('Visualizar Prévia', 'tainacan-explorador'))
-                )
-            );
         };
         
         const getFieldsForType = (type) => {
@@ -307,34 +209,64 @@
             return fields[type] || [];
         };
         
-        const renderVisualizationSettings = (type) => {
-            if (type === 'map') {
-                return el(Fragment, null,
-                    el(SelectControl, {
-                        label: __('Estilo do Mapa', 'tainacan-explorador'),
-                        value: visualizationSettings.map?.style || 'streets',
-                        options: [
-                            { label: __('Ruas', 'tainacan-explorador'), value: 'streets' },
-                            { label: __('Satélite', 'tainacan-explorador'), value: 'satellite' },
-                            { label: __('Terreno', 'tainacan-explorador'), value: 'terrain' },
-                            { label: __('Dark', 'tainacan-explorador'), value: 'dark' }
-                        ],
-                        onChange: (value) => handleSettingChange('map', 'style', value)
-                    }),
-                    
-                    el(TextControl, {
-                        label: __('Zoom Inicial', 'tainacan-explorador'),
-                        type: 'number',
-                        min: 1,
-                        max: 20,
-                        value: visualizationSettings.map?.zoom || 10,
-                        onChange: (value) => handleSettingChange('map', 'zoom', parseInt(value))
-                    })
-                );
-            }
+        const renderMappingForm = (type) => {
+            const fields = getFieldsForType(type);
             
-            return null;
+            return el('div', { className: 'tei-mapping-form' },
+                el('div', { className: 'tei-form-grid' },
+                    fields.map(field => 
+                        el('div', { key: field.key, className: 'tei-form-group' },
+                            el(SelectControl, {
+                                label: field.label + (field.required ? ' *' : ''),
+                                value: mappings[type]?.[field.key] || '',
+                                options: [
+                                    { label: __('Selecione...', 'tainacan-explorador'), value: '' },
+                                    ...metadata.map(m => ({
+                                        label: `${m.name} (${m.type})`,
+                                        value: m.id
+                                    }))
+                                ],
+                                onChange: (value) => handleMappingChange(type, field.key, value)
+                            })
+                        )
+                    )
+                ),
+                
+                el('div', { className: 'tei-form-actions', style: { marginTop: '20px' } },
+                    el(Button, {
+                        isPrimary: true,
+                        isBusy: saving,
+                        disabled: saving || !selectedCollection,
+                        onClick: () => saveMappings(type),
+                        style: { marginRight: '10px' }
+                    }, saving ? __('Salvando...', 'tainacan-explorador') : __('Salvar Configurações', 'tainacan-explorador')),
+                    
+                    el(Button, {
+                        isSecondary: true,
+                        onClick: () => testVisualization(type),
+                        disabled: !selectedCollection
+                    }, __('Visualizar Prévia', 'tainacan-explorador'))
+                )
+            );
         };
+        
+        const tabs = [
+            {
+                name: 'map',
+                title: __('Mapa', 'tainacan-explorador'),
+                className: 'tab-map',
+            },
+            {
+                name: 'timeline',
+                title: __('Linha do Tempo', 'tainacan-explorador'),
+                className: 'tab-timeline',
+            },
+            {
+                name: 'story',
+                title: __('Storytelling', 'tainacan-explorador'),
+                className: 'tab-story',
+            }
+        ];
         
         return el('div', { className: 'tei-admin-container' },
             notification && el(Notice, {
@@ -349,54 +281,39 @@
             ),
             
             el('div', { className: 'tei-admin-content' },
-                el('div', { className: 'tei-admin-sidebar' },
-                    el(Card, null,
-                        el(CardHeader, null,
-                            el('h2', null, __('Coleções Disponíveis', 'tainacan-explorador'))
-                        ),
-                        el(CardBody, null,
-                            loading ? el(Spinner) :
-                            el(SelectControl, {
-                                label: __('Selecione uma coleção', 'tainacan-explorador'),
-                                value: selectedCollection?.id || '',
-                                options: [
-                                    { label: __('Selecione...', 'tainacan-explorador'), value: '' },
-                                    ...collections.map(c => ({
-                                        label: `${c.name} (${c.items_count || 0} itens)`,
-                                        value: c.id
-                                    }))
-                                ],
-                                onChange: handleCollectionSelect
-                            })
-                        )
+                el(Card, null,
+                    el(CardHeader, null,
+                        el('h2', null, __('Selecione uma Coleção', 'tainacan-explorador'))
+                    ),
+                    el(CardBody, null,
+                        loading ? el(Spinner) :
+                        el(SelectControl, {
+                            value: selectedCollection?.id || '',
+                            options: [
+                                { label: __('Selecione...', 'tainacan-explorador'), value: '' },
+                                ...collections.map(c => ({
+                                    label: `${c.name} (${c.items_count || 0} itens)`,
+                                    value: c.id
+                                }))
+                            ],
+                            onChange: handleCollectionSelect
+                        })
                     )
                 ),
                 
-                el('div', { className: 'tei-admin-main' },
-                    selectedCollection ?
-                        el(Card, null,
-                            el(CardHeader, null,
-                                el('h2', null, 
-                                    __('Configurar: ', 'tainacan-explorador') + selectedCollection.name
-                                )
-                            ),
-                            el(CardBody, null,
-                                loading ? el(Spinner) :
-                                el(TabPanel, {
-                                    className: 'tei-tabs',
-                                    activeClass: 'is-active',
-                                    tabs: tabs,
-                                    children: (tab) => renderMappingForm(tab.name)
-                                })
-                            )
-                        ) :
-                        el(Card, null,
-                            el(CardBody, null,
-                                el('div', { className: 'tei-empty-state' },
-                                    el('p', null, __('Selecione uma coleção para começar a configurar as visualizações.', 'tainacan-explorador'))
-                                )
-                            )
-                        )
+                selectedCollection && el(Card, { style: { marginTop: '20px' } },
+                    el(CardHeader, null,
+                        el('h2', null, __('Configurar Visualizações', 'tainacan-explorador'))
+                    ),
+                    el(CardBody, null,
+                        loading ? el(Spinner) :
+                        el(TabPanel, {
+                            className: 'tei-tabs',
+                            activeClass: 'is-active',
+                            tabs: tabs,
+                            children: (tab) => renderMappingForm(tab.name)
+                        })
+                    )
                 )
             )
         );
@@ -404,17 +321,20 @@
     
     // Inicialização
     window.TEI_Admin = {
-        init: function(root) {
-            if (root && root.render) {
-                root.render(el(AdminPanel));
-            }
-        },
-        initLegacy: function(elementId) {
+        init: function(elementId) {
             const element = document.getElementById(elementId);
             if (element && wp.element.render) {
                 wp.element.render(el(AdminPanel), element);
             }
         }
     };
+    
+    // Auto-inicialização
+    document.addEventListener('DOMContentLoaded', function() {
+        const root = document.getElementById('tei-admin-root');
+        if (root) {
+            window.TEI_Admin.init('tei-admin-root');
+        }
+    });
 
 })(window.wp, window, window.jQuery);
