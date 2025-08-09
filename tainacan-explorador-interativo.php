@@ -37,6 +37,11 @@ class TainacanExploradorInterativo {
     private static $instance = null;
     
     /**
+     * Classes carregadas
+     */
+    private static $loaded_classes = [];
+    
+    /**
      * Obtém a instância única do plugin
      */
     public static function get_instance() {
@@ -73,8 +78,26 @@ class TainacanExploradorInterativo {
             echo '<div class="notice notice-error"><p>';
             echo esc_html__('Explorador Interativo requer o plugin Tainacan ativo para funcionar.', 'tainacan-explorador');
             echo '</p></div>';
-            deactivate_plugins(TEI_PLUGIN_BASENAME);
         }
+    }
+    
+    /**
+     * Carrega arquivo apenas uma vez
+     */
+    private function load_once($file, $class_name = null) {
+        if ($class_name && class_exists($class_name)) {
+            return true;
+        }
+        
+        if (file_exists($file)) {
+            require_once $file;
+            if ($class_name) {
+                self::$loaded_classes[] = $class_name;
+            }
+            return true;
+        }
+        
+        return false;
     }
     
     /**
@@ -82,24 +105,24 @@ class TainacanExploradorInterativo {
      */
     private function load_dependencies() {
         // Classes principais
-        require_once TEI_PLUGIN_DIR . 'includes/class-metadata-mapper.php';
-        require_once TEI_PLUGIN_DIR . 'includes/class-cache-manager.php';
-        require_once TEI_PLUGIN_DIR . 'includes/class-api-handler.php';
-        require_once TEI_PLUGIN_DIR . 'includes/class-sanitizer.php';
+        $this->load_once(TEI_PLUGIN_DIR . 'includes/class-metadata-mapper.php', 'TEI_Metadata_Mapper');
+        $this->load_once(TEI_PLUGIN_DIR . 'includes/class-cache-manager.php', 'TEI_Cache_Manager');
+        $this->load_once(TEI_PLUGIN_DIR . 'includes/class-api-handler.php', 'TEI_API_Handler');
+        $this->load_once(TEI_PLUGIN_DIR . 'includes/class-sanitizer.php', 'TEI_Sanitizer');
         
-        // Admin - corrigido nome do arquivo
+        // Admin
         if (is_admin()) {
-            require_once TEI_PLUGIN_DIR . 'admin/admin-page.php';  // Corrigido de class-admin-page.php
-            require_once TEI_PLUGIN_DIR . 'admin/class-ajax-handler.php';
+            $this->load_once(TEI_PLUGIN_DIR . 'admin/admin-page.php', 'TEI_Admin_Page');
+            $this->load_once(TEI_PLUGIN_DIR . 'admin/class-ajax-handler.php', 'TEI_Ajax_Handler');
         }
         
-        // Shortcodes - corrigido caminhos
-        require_once TEI_PLUGIN_DIR . 'shortcodes/mapa.php';  // Corrigido de class-mapa-shortcode.php
-        require_once TEI_PLUGIN_DIR . 'shortcodes/timeline.php';  // Corrigido de class-timeline-shortcode.php
-        require_once TEI_PLUGIN_DIR . 'shortcodes/story.php';  // Corrigido de class-story-shortcode.php
+        // Shortcodes
+        $this->load_once(TEI_PLUGIN_DIR . 'shortcodes/mapa.php', 'TEI_Mapa_Shortcode');
+        $this->load_once(TEI_PLUGIN_DIR . 'shortcodes/timeline.php', 'TEI_Timeline_Shortcode');
+        $this->load_once(TEI_PLUGIN_DIR . 'shortcodes/story.php', 'TEI_Story_Shortcode');
         
         // API customizada
-        require_once TEI_PLUGIN_DIR . 'api/class-api-endpoints.php';
+        $this->load_once(TEI_PLUGIN_DIR . 'api/class-api-endpoints.php', 'TEI_API_Endpoints');
     }
     
     /**
@@ -119,28 +142,35 @@ class TainacanExploradorInterativo {
      * Define hooks administrativos
      */
     private function define_admin_hooks() {
-        if (is_admin()) {
-            $admin = new TEI_Admin_Page();
-            
-            // Menu e páginas admin
-            add_action('admin_menu', [$admin, 'add_menu_page']);
-            add_action('admin_enqueue_scripts', [$admin, 'enqueue_admin_assets']);
-            
-            // AJAX handlers
-            $ajax = new TEI_Ajax_Handler();
-            add_action('wp_ajax_tei_get_collections', [$ajax, 'get_collections']);
-            add_action('wp_ajax_tei_get_metadata', [$ajax, 'get_metadata']);
-            add_action('wp_ajax_tei_save_mapping', [$ajax, 'save_mapping']);
-            add_action('wp_ajax_tei_delete_mapping', [$ajax, 'delete_mapping']);
-            add_action('wp_ajax_tei_test_visualization', [$ajax, 'test_visualization']);
-            add_action('wp_ajax_tei_get_all_mappings', [$ajax, 'get_all_mappings']);
-            add_action('wp_ajax_tei_clone_mapping', [$ajax, 'clone_mapping']);
-            add_action('wp_ajax_tei_export_mappings', [$ajax, 'export_mappings']);
-            add_action('wp_ajax_tei_import_mappings', [$ajax, 'import_mappings']);
-            add_action('wp_ajax_tei_clear_cache', [$ajax, 'clear_cache']);
-            add_action('wp_ajax_tei_get_stats', [$ajax, 'get_stats']);
-            add_action('wp_ajax_tei_validate_tainacan_api', [$ajax, 'validate_tainacan_api']);
+        if (!is_admin()) {
+            return;
         }
+        
+        // Verifica se classes existem antes de usar
+        if (!class_exists('TEI_Admin_Page') || !class_exists('TEI_Ajax_Handler')) {
+            return;
+        }
+        
+        $admin = new TEI_Admin_Page();
+        $ajax = new TEI_Ajax_Handler();
+        
+        // Menu e páginas admin
+        add_action('admin_menu', [$admin, 'add_menu_page']);
+        add_action('admin_enqueue_scripts', [$admin, 'enqueue_admin_assets']);
+        
+        // AJAX handlers
+        add_action('wp_ajax_tei_get_collections', [$ajax, 'get_collections']);
+        add_action('wp_ajax_tei_get_metadata', [$ajax, 'get_metadata']);
+        add_action('wp_ajax_tei_save_mapping', [$ajax, 'save_mapping']);
+        add_action('wp_ajax_tei_delete_mapping', [$ajax, 'delete_mapping']);
+        add_action('wp_ajax_tei_test_visualization', [$ajax, 'test_visualization']);
+        add_action('wp_ajax_tei_get_all_mappings', [$ajax, 'get_all_mappings']);
+        add_action('wp_ajax_tei_clone_mapping', [$ajax, 'clone_mapping']);
+        add_action('wp_ajax_tei_export_mappings', [$ajax, 'export_mappings']);
+        add_action('wp_ajax_tei_import_mappings', [$ajax, 'import_mappings']);
+        add_action('wp_ajax_tei_clear_cache', [$ajax, 'clear_cache']);
+        add_action('wp_ajax_tei_get_stats', [$ajax, 'get_stats']);
+        add_action('wp_ajax_tei_validate_tainacan_api', [$ajax, 'validate_tainacan_api']);
     }
     
     /**
@@ -152,8 +182,10 @@ class TainacanExploradorInterativo {
         
         // REST API customizada
         add_action('rest_api_init', function() {
-            $api = new TEI_API_Endpoints();
-            $api->register_routes();
+            if (class_exists('TEI_API_Endpoints')) {
+                $api = new TEI_API_Endpoints();
+                $api->register_routes();
+            }
         });
     }
     
@@ -161,9 +193,15 @@ class TainacanExploradorInterativo {
      * Registra shortcodes
      */
     private function register_shortcodes() {
-        add_shortcode('tainacan_explorador_mapa', [new TEI_Mapa_Shortcode(), 'render']);
-        add_shortcode('tainacan_explorador_timeline', [new TEI_Timeline_Shortcode(), 'render']);
-        add_shortcode('tainacan_explorador_story', [new TEI_Story_Shortcode(), 'render']);
+        if (class_exists('TEI_Mapa_Shortcode')) {
+            add_shortcode('tainacan_explorador_mapa', [new TEI_Mapa_Shortcode(), 'render']);
+        }
+        if (class_exists('TEI_Timeline_Shortcode')) {
+            add_shortcode('tainacan_explorador_timeline', [new TEI_Timeline_Shortcode(), 'render']);
+        }
+        if (class_exists('TEI_Story_Shortcode')) {
+            add_shortcode('tainacan_explorador_story', [new TEI_Story_Shortcode(), 'render']);
+        }
     }
     
     /**
@@ -242,7 +280,6 @@ class TainacanExploradorInterativo {
                 '1.5.3'
             );
             
-            // Corrigido de maps.js para map.js
             wp_enqueue_script(
                 'tei-map',
                 TEI_PLUGIN_URL . 'assets/js/visualizations/map.js',
@@ -349,7 +386,9 @@ class TainacanExploradorInterativo {
      */
     public static function deactivate() {
         // Limpa cache
-        TEI_Cache_Manager::clear_all();
+        if (class_exists('TEI_Cache_Manager')) {
+            TEI_Cache_Manager::clear_all();
+        }
         
         // Limpa permalinks
         flush_rewrite_rules();
