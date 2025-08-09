@@ -182,8 +182,10 @@ class TEI_Timeline_Shortcode {
             // Se for ID numérico, busca no metadata
             if (is_numeric($date_field) && isset($item['metadata'])) {
                 foreach ($item['metadata'] as $meta) {
-                    if ($meta['metadatum_id'] == $date_field) {
-                        $date_value = $meta['value'];
+                    // Verifica diferentes estruturas possíveis
+                    $meta_id = $meta['metadatum_id'] ?? $meta['metadatum']['id'] ?? $meta['id'] ?? null;
+                    if ($meta_id == $date_field) {
+                        $date_value = $meta['value'] ?? $meta['value_as_string'] ?? '';
                         break;
                     }
                 }
@@ -343,8 +345,10 @@ class TEI_Timeline_Shortcode {
         // Para metadados do Tainacan (usando ID numérico)
         if (is_numeric($field_id) && isset($item['metadata'])) {
             foreach ($item['metadata'] as $meta) {
-                if ($meta['metadatum_id'] == $field_id) {
-                    return $meta['value'];
+                // Verifica diferentes estruturas possíveis
+                $meta_id = $meta['metadatum_id'] ?? $meta['metadatum']['id'] ?? $meta['id'] ?? null;
+                if ($meta_id == $field_id) {
+                    return $meta['value'] ?? $meta['value_as_string'] ?? '';
                 }
             }
         }
