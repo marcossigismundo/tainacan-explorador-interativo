@@ -26,10 +26,6 @@ define('TEI_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('TEI_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('TEI_PLUGIN_BASENAME', plugin_basename(__FILE__));
 
-// Carrega arquivos essenciais imediatamente para hooks de ativação
-require_once TEI_PLUGIN_DIR . 'includes/class-metadata-mapper.php';
-require_once TEI_PLUGIN_DIR . 'includes/class-cache-manager.php';
-
 /**
  * Classe principal do plugin
  */
@@ -73,10 +69,11 @@ class TainacanExploradorInterativo {
      * Verifica se o Tainacan está ativo
      */
     public function check_tainacan_active() {
-        if (!class_exists('Tainacan\Plugin')) {
+        if (!function_exists('tainacan_get_api_postdata') && !class_exists('Tainacan\Plugin')) {
             echo '<div class="notice notice-error"><p>';
             echo esc_html__('Explorador Interativo requer o plugin Tainacan ativo para funcionar.', 'tainacan-explorador');
             echo '</p></div>';
+            deactivate_plugins(TEI_PLUGIN_BASENAME);
         }
     }
     
@@ -84,24 +81,22 @@ class TainacanExploradorInterativo {
      * Carrega arquivos de dependências
      */
     private function load_dependencies() {
-        // Classes principais (algumas já carregadas para ativação)
-        if (!class_exists('TEI_API_Handler')) {
-            require_once TEI_PLUGIN_DIR . 'includes/class-api-handler.php';
-        }
-        if (!class_exists('TEI_Sanitizer')) {
-            require_once TEI_PLUGIN_DIR . 'includes/class-sanitizer.php';
-        }
+        // Classes principais
+        require_once TEI_PLUGIN_DIR . 'includes/class-metadata-mapper.php';
+        require_once TEI_PLUGIN_DIR . 'includes/class-cache-manager.php';
+        require_once TEI_PLUGIN_DIR . 'includes/class-api-handler.php';
+        require_once TEI_PLUGIN_DIR . 'includes/class-sanitizer.php';
         
-        // Admin
+        // Admin - corrigido nome do arquivo
         if (is_admin()) {
-            require_once TEI_PLUGIN_DIR . 'admin/class-admin-page.php';
+            require_once TEI_PLUGIN_DIR . 'admin/admin-page.php';  // Corrigido de class-admin-page.php
             require_once TEI_PLUGIN_DIR . 'admin/class-ajax-handler.php';
         }
         
-        // Shortcodes
-        require_once TEI_PLUGIN_DIR . 'shortcodes/class-mapa-shortcode.php';
-        require_once TEI_PLUGIN_DIR . 'shortcodes/class-timeline-shortcode.php';
-        require_once TEI_PLUGIN_DIR . 'shortcodes/class-story-shortcode.php';
+        // Shortcodes - corrigido caminhos
+        require_once TEI_PLUGIN_DIR . 'shortcodes/mapa.php';  // Corrigido de class-mapa-shortcode.php
+        require_once TEI_PLUGIN_DIR . 'shortcodes/timeline.php';  // Corrigido de class-timeline-shortcode.php
+        require_once TEI_PLUGIN_DIR . 'shortcodes/story.php';  // Corrigido de class-story-shortcode.php
         
         // API customizada
         require_once TEI_PLUGIN_DIR . 'api/class-api-endpoints.php';
@@ -247,6 +242,7 @@ class TainacanExploradorInterativo {
                 '1.5.3'
             );
             
+            // Corrigido de maps.js para map.js
             wp_enqueue_script(
                 'tei-map',
                 TEI_PLUGIN_URL . 'assets/js/visualizations/map.js',
@@ -321,13 +317,9 @@ class TainacanExploradorInterativo {
      * Ações de ativação do plugin
      */
     public static function activate() {
-        // Carrega classes necessárias se ainda não carregadas
-        if (!class_exists('TEI_Metadata_Mapper')) {
-            require_once TEI_PLUGIN_DIR . 'includes/class-metadata-mapper.php';
-        }
-        if (!class_exists('TEI_Cache_Manager')) {
-            require_once TEI_PLUGIN_DIR . 'includes/class-cache-manager.php';
-        }
+        // Carrega classes necessárias para ativação
+        require_once plugin_dir_path(__FILE__) . 'includes/class-metadata-mapper.php';
+        require_once plugin_dir_path(__FILE__) . 'includes/class-cache-manager.php';
         
         // Cria tabela de mapeamentos se necessário
         TEI_Metadata_Mapper::create_tables();
@@ -357,9 +349,7 @@ class TainacanExploradorInterativo {
      */
     public static function deactivate() {
         // Limpa cache
-        if (class_exists('TEI_Cache_Manager')) {
-            TEI_Cache_Manager::clear_all();
-        }
+        TEI_Cache_Manager::clear_all();
         
         // Limpa permalinks
         flush_rewrite_rules();
@@ -373,12 +363,8 @@ class TainacanExploradorInterativo {
      */
     public static function uninstall() {
         // Carrega classes necessárias
-        if (!class_exists('TEI_Metadata_Mapper')) {
-            require_once TEI_PLUGIN_DIR . 'includes/class-metadata-mapper.php';
-        }
-        if (!class_exists('TEI_Cache_Manager')) {
-            require_once TEI_PLUGIN_DIR . 'includes/class-cache-manager.php';
-        }
+        require_once plugin_dir_path(__FILE__) . 'includes/class-metadata-mapper.php';
+        require_once plugin_dir_path(__FILE__) . 'includes/class-cache-manager.php';
         
         // Remove tabelas customizadas
         TEI_Metadata_Mapper::drop_tables();
