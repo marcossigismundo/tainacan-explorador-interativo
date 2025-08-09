@@ -1,0 +1,523 @@
+/**
+ * Explorador Interativo - Common Styles
+ * Estilos compartilhados entre visualizações
+ * 
+ * @package TainacanExplorador
+ * @version 1.0.0
+ */
+
+/* Reset básico para componentes TEI */
+.tei-map-container *,
+.tei-timeline-container *,
+.tei-story-container * {
+    box-sizing: border-box;
+}
+
+/* Loading Overlay */
+.tei-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.tei-loading-content {
+    text-align: center;
+}
+
+.tei-spinner {
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 16px;
+    border: 3px solid #f3f4f6;
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.tei-loading-content p {
+    color: #6b7280;
+    font-size: 14px;
+    margin: 0;
+}
+
+/* Error Messages */
+.tei-error {
+    padding: 20px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    color: #991b1b;
+    margin: 20px 0;
+}
+
+.tei-error p {
+    margin: 0;
+    font-size: 14px;
+}
+
+/* Toast Notifications */
+.tei-toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    pointer-events: none;
+}
+
+.tei-toast {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 12px;
+    max-width: 350px;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all 0.3s ease;
+    pointer-events: auto;
+}
+
+.tei-toast-show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.tei-toast-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+}
+
+.tei-toast-content svg {
+    flex-shrink: 0;
+}
+
+.tei-toast-content span {
+    flex: 1;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.tei-toast-success {
+    border-left: 4px solid #10b981;
+}
+
+.tei-toast-success svg {
+    color: #10b981;
+}
+
+.tei-toast-error {
+    border-left: 4px solid #ef4444;
+}
+
+.tei-toast-error svg {
+    color: #ef4444;
+}
+
+.tei-toast-warning {
+    border-left: 4px solid #f59e0b;
+}
+
+.tei-toast-warning svg {
+    color: #f59e0b;
+}
+
+.tei-toast-info {
+    border-left: 4px solid #3b82f6;
+}
+
+.tei-toast-info svg {
+    color: #3b82f6;
+}
+
+/* Modal */
+.tei-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.tei-modal-open {
+    opacity: 1;
+    visibility: visible;
+}
+
+.tei-modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.tei-modal-dialog {
+    position: relative;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+}
+
+.tei-modal-open .tei-modal-dialog {
+    transform: scale(1);
+}
+
+.tei-modal-small {
+    width: 90%;
+    max-width: 400px;
+}
+
+.tei-modal-medium {
+    width: 90%;
+    max-width: 600px;
+}
+
+.tei-modal-large {
+    width: 90%;
+    max-width: 900px;
+}
+
+.tei-modal-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.tei-modal-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #111827;
+    margin: 0;
+}
+
+.tei-modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    transition: background 0.2s ease;
+}
+
+.tei-modal-close:hover {
+    background: #f3f4f6;
+    color: #111827;
+}
+
+.tei-modal-body {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+/* Lazy Loading */
+.tei-lazy {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.tei-lazy-loaded {
+    opacity: 1;
+}
+
+/* Visualization Containers */
+.tei-visualization {
+    position: relative;
+    width: 100%;
+    min-height: 400px;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* Buttons */
+.tei-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 16px;
+    background: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    gap: 8px;
+}
+
+.tei-button:hover {
+    background: #2563eb;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.tei-button:active {
+    transform: translateY(0);
+}
+
+.tei-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.tei-button-secondary {
+    background: white;
+    color: #374151;
+    border: 1px solid #d1d5db;
+}
+
+.tei-button-secondary:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+}
+
+/* Search Components */
+.tei-search-container {
+    position: relative;
+    margin-bottom: 20px;
+}
+
+.tei-search-input {
+    width: 100%;
+    padding: 10px 40px 10px 16px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.tei-search-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.tei-search-button {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    padding: 8px;
+    cursor: pointer;
+    color: #6b7280;
+    transition: color 0.2s ease;
+}
+
+.tei-search-button:hover {
+    color: #3b82f6;
+}
+
+/* Filters */
+.tei-filters {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.tei-filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tei-filter-label {
+    font-size: 14px;
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.tei-filter-select {
+    padding: 6px 32px 6px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+    background: white;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L2 5h8z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    appearance: none;
+    cursor: pointer;
+}
+
+/* No Data States */
+.tei-no-data {
+    text-align: center;
+    padding: 60px 20px;
+    color: #6b7280;
+}
+
+.tei-no-data-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 20px;
+    opacity: 0.3;
+}
+
+.tei-no-data-message {
+    font-size: 16px;
+    margin: 0;
+}
+
+/* Accessibility */
+.tei-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Focus Styles */
+.tei-focusable:focus {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+}
+
+/* Print Styles */
+@media print {
+    .tei-no-print {
+        display: none !important;
+    }
+    
+    .tei-visualization {
+        break-inside: avoid;
+    }
+}
+
+/* Animation Classes */
+.tei-fade-in {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.tei-slide-up {
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.tei-scale-in {
+    animation: scaleIn 0.3s ease;
+}
+
+@keyframes scaleIn {
+    from {
+        transform: scale(0.9);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* Responsive Utilities */
+@media (max-width: 640px) {
+    .tei-hide-mobile {
+        display: none;
+    }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+    .tei-hide-tablet {
+        display: none;
+    }
+}
+
+@media (min-width: 1025px) {
+    .tei-hide-desktop {
+        display: none;
+    }
+}
+
+/* Custom Scrollbar */
+.tei-custom-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 #f3f4f6;
+}
+
+.tei-custom-scroll::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.tei-custom-scroll::-webkit-scrollbar-track {
+    background: #f3f4f6;
+    border-radius: 4px;
+}
+
+.tei-custom-scroll::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.tei-custom-scroll::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+
+/* Z-index Scale */
+.tei-z-0 { z-index: 0; }
+.tei-z-10 { z-index: 10; }
+.tei-z-20 { z-index: 20; }
+.tei-z-30 { z-index: 30; }
+.tei-z-40 { z-index: 40; }
+.tei-z-50 { z-index: 50; }
+.tei-z-modal { z-index: 9999; }
+.tei-z-toast { z-index: 10000; }
