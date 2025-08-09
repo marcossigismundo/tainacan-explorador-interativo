@@ -1,0 +1,618 @@
+/**
+ * Explorador Interativo - Admin Styles
+ * Estilos para interface administrativa
+ * 
+ * @package TainacanExplorador
+ * @version 1.0.0
+ */
+
+/* Variables */
+:root {
+    --tei-primary: #3b82f6;
+    --tei-primary-dark: #2563eb;
+    --tei-secondary: #8b5cf6;
+    --tei-secondary-dark: #7c3aed;
+    --tei-success: #10b981;
+    --tei-warning: #f59e0b;
+    --tei-danger: #ef4444;
+    --tei-info: #06b6d4;
+    --tei-gray-50: #f9fafb;
+    --tei-gray-100: #f3f4f6;
+    --tei-gray-200: #e5e7eb;
+    --tei-gray-300: #d1d5db;
+    --tei-gray-400: #9ca3af;
+    --tei-gray-500: #6b7280;
+    --tei-gray-600: #4b5563;
+    --tei-gray-700: #374151;
+    --tei-gray-800: #1f2937;
+    --tei-gray-900: #111827;
+    --tei-radius: 8px;
+    --tei-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+    --tei-shadow-lg: 0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23);
+    --tei-transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Admin Wrapper */
+.tei-admin-wrap {
+    margin: 20px 20px 20px 0;
+    max-width: 1400px;
+}
+
+.tei-admin-wrap * {
+    box-sizing: border-box;
+}
+
+/* Cards */
+.tei-card {
+    background: white;
+    border-radius: var(--tei-radius);
+    box-shadow: var(--tei-shadow);
+    padding: 24px;
+    margin-bottom: 20px;
+    transition: var(--tei-transition);
+}
+
+.tei-card:hover {
+    box-shadow: var(--tei-shadow-lg);
+}
+
+.tei-card-header {
+    border-bottom: 1px solid var(--tei-gray-200);
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+}
+
+.tei-card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--tei-gray-900);
+    margin: 0;
+}
+
+.tei-card-description {
+    color: var(--tei-gray-600);
+    margin-top: 8px;
+    font-size: 0.875rem;
+}
+
+/* Grid System */
+.tei-grid {
+    display: grid;
+    gap: 20px;
+}
+
+.tei-grid-cols-2 {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+.tei-grid-cols-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.tei-grid-cols-4 {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 1024px) {
+    .tei-grid-cols-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .tei-grid-cols-3 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .tei-grid-cols-2,
+    .tei-grid-cols-3,
+    .tei-grid-cols-4 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Forms */
+.tei-form-group {
+    margin-bottom: 20px;
+}
+
+.tei-form-label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: var(--tei-gray-700);
+    font-size: 0.875rem;
+}
+
+.tei-form-control {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--tei-gray-300);
+    border-radius: var(--tei-radius);
+    font-size: 0.875rem;
+    transition: var(--tei-transition);
+    background-color: white;
+}
+
+.tei-form-control:focus {
+    outline: none;
+    border-color: var(--tei-primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.tei-form-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23374151' d='M6 9L2 5h8z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+}
+
+.tei-form-checkbox {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+.tei-form-help {
+    margin-top: 6px;
+    font-size: 0.8125rem;
+    color: var(--tei-gray-500);
+}
+
+/* Buttons */
+.tei-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 16px;
+    border: none;
+    border-radius: var(--tei-radius);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--tei-transition);
+    text-decoration: none;
+    gap: 8px;
+}
+
+.tei-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.tei-btn-primary {
+    background: linear-gradient(135deg, var(--tei-primary) 0%, var(--tei-secondary) 100%);
+    color: white;
+}
+
+.tei-btn-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, var(--tei-primary-dark) 0%, var(--tei-secondary-dark) 100%);
+    transform: translateY(-1px);
+    box-shadow: var(--tei-shadow);
+}
+
+.tei-btn-secondary {
+    background: white;
+    color: var(--tei-gray-700);
+    border: 1px solid var(--tei-gray-300);
+}
+
+.tei-btn-secondary:hover:not(:disabled) {
+    background: var(--tei-gray-50);
+    border-color: var(--tei-gray-400);
+}
+
+.tei-btn-danger {
+    background: var(--tei-danger);
+    color: white;
+}
+
+.tei-btn-danger:hover:not(:disabled) {
+    background: #dc2626;
+}
+
+.tei-btn-sm {
+    padding: 6px 12px;
+    font-size: 0.8125rem;
+}
+
+.tei-btn-lg {
+    padding: 12px 24px;
+    font-size: 1rem;
+}
+
+.tei-btn-icon {
+    padding: 8px;
+}
+
+.tei-btn-group {
+    display: inline-flex;
+    gap: 8px;
+}
+
+/* Tables */
+.tei-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.tei-table thead {
+    background: var(--tei-gray-50);
+    border-bottom: 2px solid var(--tei-gray-200);
+}
+
+.tei-table th {
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--tei-gray-700);
+}
+
+.tei-table td {
+    padding: 12px;
+    border-bottom: 1px solid var(--tei-gray-200);
+}
+
+.tei-table tbody tr:hover {
+    background: var(--tei-gray-50);
+}
+
+/* Badges */
+.tei-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.tei-badge-primary {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--tei-primary);
+}
+
+.tei-badge-success {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--tei-success);
+}
+
+.tei-badge-warning {
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--tei-warning);
+}
+
+.tei-badge-danger {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--tei-danger);
+}
+
+/* Alerts */
+.tei-alert {
+    padding: 12px 16px;
+    border-radius: var(--tei-radius);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.tei-alert-info {
+    background: rgba(6, 182, 212, 0.1);
+    border: 1px solid rgba(6, 182, 212, 0.2);
+    color: var(--tei-info);
+}
+
+.tei-alert-success {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    color: var(--tei-success);
+}
+
+.tei-alert-warning {
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    color: var(--tei-warning);
+}
+
+.tei-alert-danger {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    color: var(--tei-danger);
+}
+
+/* Stats */
+.tei-stats {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.tei-stat {
+    flex: 1;
+    padding: 20px;
+    background: white;
+    border-radius: var(--tei-radius);
+    box-shadow: var(--tei-shadow);
+    text-align: center;
+}
+
+.tei-stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--tei-gray-900);
+    line-height: 1;
+}
+
+.tei-stat-label {
+    font-size: 0.875rem;
+    color: var(--tei-gray-600);
+    margin-top: 8px;
+}
+
+.tei-stat-icon {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--tei-primary) 0%, var(--tei-secondary) 100%);
+    color: white;
+}
+
+/* Tabs */
+.tei-tabs {
+    border-bottom: 2px solid var(--tei-gray-200);
+    margin-bottom: 24px;
+}
+
+.tei-tabs-list {
+    display: flex;
+    gap: 24px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.tei-tab {
+    padding: 12px 0;
+    font-weight: 500;
+    color: var(--tei-gray-600);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: var(--tei-transition);
+}
+
+.tei-tab:hover {
+    color: var(--tei-gray-900);
+}
+
+.tei-tab.active {
+    color: var(--tei-primary);
+    border-bottom-color: var(--tei-primary);
+}
+
+.tei-tab-content {
+    padding: 24px 0;
+}
+
+.tei-tab-panel {
+    display: none;
+}
+
+.tei-tab-panel.active {
+    display: block;
+}
+
+/* Mapping Form */
+.tei-mapping-form {
+    background: var(--tei-gray-50);
+    padding: 20px;
+    border-radius: var(--tei-radius);
+}
+
+.tei-mapping-field {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.tei-mapping-field-label {
+    flex: 0 0 200px;
+    font-weight: 500;
+    color: var(--tei-gray-700);
+}
+
+.tei-mapping-field-control {
+    flex: 1;
+}
+
+.tei-mapping-required {
+    color: var(--tei-danger);
+    margin-left: 4px;
+}
+
+/* Collection List */
+.tei-collections-list {
+    display: grid;
+    gap: 12px;
+}
+
+.tei-collection-item {
+    padding: 16px;
+    background: white;
+    border: 2px solid var(--tei-gray-200);
+    border-radius: var(--tei-radius);
+    cursor: pointer;
+    transition: var(--tei-transition);
+}
+
+.tei-collection-item:hover {
+    border-color: var(--tei-primary);
+    box-shadow: var(--tei-shadow);
+}
+
+.tei-collection-item.active {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%);
+    border-color: var(--tei-primary);
+}
+
+.tei-collection-name {
+    font-weight: 600;
+    color: var(--tei-gray-900);
+    margin-bottom: 4px;
+}
+
+.tei-collection-count {
+    font-size: 0.875rem;
+    color: var(--tei-gray-500);
+}
+
+/* Progress */
+.tei-progress {
+    height: 8px;
+    background: var(--tei-gray-200);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 20px 0;
+}
+
+.tei-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--tei-primary) 0%, var(--tei-secondary) 100%);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+/* Loading States */
+.tei-skeleton {
+    background: linear-gradient(90deg, var(--tei-gray-200) 25%, var(--tei-gray-100) 50%, var(--tei-gray-200) 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+    border-radius: var(--tei-radius);
+    height: 20px;
+}
+
+@keyframes loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Empty States */
+.tei-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--tei-gray-500);
+}
+
+.tei-empty-icon {
+    width: 120px;
+    height: 120px;
+    margin: 0 auto 20px;
+    opacity: 0.3;
+}
+
+.tei-empty-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--tei-gray-700);
+    margin-bottom: 8px;
+}
+
+.tei-empty-description {
+    color: var(--tei-gray-500);
+    margin-bottom: 24px;
+}
+
+/* Animations */
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.animate-slide-in-right {
+    animation: slideInRight 0.3s ease-out;
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+.animate-pulse {
+    animation: pulse 2s infinite;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .tei-admin-wrap {
+        margin: 20px 10px;
+    }
+    
+    .tei-stats {
+        flex-direction: column;
+    }
+    
+    .tei-mapping-field {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .tei-mapping-field-label {
+        flex: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .tei-tabs-list {
+        flex-direction: column;
+        gap: 0;
+    }
+    
+    .tei-tab {
+        padding: 12px;
+        border-bottom: 1px solid var(--tei-gray-200);
+        border-left: 2px solid transparent;
+    }
+    
+    .tei-tab.active {
+        border-bottom-color: var(--tei-gray-200);
+        border-left-color: var(--tei-primary);
+    }
+}
+
+/* WordPress Admin Compatibility */
+.wp-admin .tei-admin-wrap h1,
+.wp-admin .tei-admin-wrap h2,
+.wp-admin .tei-admin-wrap h3 {
+    font-weight: 600;
+    color: var(--tei-gray-900);
+}
+
+.wp-admin .tei-admin-wrap p {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--tei-gray-700);
+}
