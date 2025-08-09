@@ -76,9 +76,7 @@ class TEI_Timeline_Shortcode {
         // Prepara parâmetros da API
         $api_params = [
             'perpage' => 200,
-            'paged' => 1,
-            'fetch_only' => 'title,description,thumbnail',
-            'fetch_only_meta' => implode(',', array_values($mapping['mapping_data']))
+            'paged' => 1
         ];
         
         // Adiciona filtro de data se especificado
@@ -107,13 +105,29 @@ class TEI_Timeline_Shortcode {
             }
         }
         
-        // Faz requisição à API do Tainacan
-        $api_handler = new TEI_API_Handler();
-        $response = $api_handler->get_collection_items($collection_id, $api_params);
+        // Faz requisição à API REST do Tainacan
+        $endpoint = rest_url("tainacan/v2/collection/{$collection_id}/items");
+        $url = add_query_arg($api_params, $endpoint);
         
-        if (is_wp_error($response)) {
-            return $response;
+        $api_response = wp_remote_get($url, [
+            'timeout' => 30,
+            'headers' => [
+                'Content-Type' => 'application/json'
+            ]
+        ]);
+        
+        if (is_wp_error($api_response)) {
+            return $api_response;
         }
+        
+        $body = wp_remote_retrieve_body($api_response);
+        $data = json_decode($body, true);
+        
+        if (!is_array($data) || !isset($data['items'])) {
+            return new WP_Error('no_data', __('Nenhum dado encontrado', 'tainacan-explorador'));
+        }
+        
+        $response = ['items' => $data['items']];
         
         // Processa dados para o formato da timeline
         $timeline_data = $this->process_timeline_data($response, $mapping);
@@ -130,6 +144,10 @@ class TEI_Timeline_Shortcode {
      * Processa dados para o formato TimelineJS
      */
     private function process_timeline_data($response, $mapping) {
+        // Debug - log dos dados recebidos
+        error_log('TEI Timeline Data: ' . print_r($response, true));
+        error_log('TEI Timeline Mapping: ' . print_r($mapping, true));
+        
         $timeline_data = [
             'title' => [
                 'text' => [
@@ -147,9 +165,35 @@ class TEI_Timeline_Shortcode {
         $category_field = $mapping['mapping_data']['category'] ?? '';
         $link_field = $mapping['mapping_data']['link'] ?? '';
         
+        // Debug - log dos campos mapeados
+        error_log("Date field: $date_field, Title field: $title_field");
+        
         foreach ($response['items'] as $item) {
-            // Obtém data
-            $date_value = $this->get_field_value($item, $date_field);
+            // Debug - primeiro item
+            static $first = true;
+            if ($first) {
+                error_log('First item structure: ' . print_r($item, true));
+                $first = false;
+            }
+            
+            // Obtém data - tenta diferentes formas
+            $date_value = null;
+            
+            // Se for ID numérico, busca no metadata
+            if (is_numeric($date_field) && isset($item['metadata'])) {
+                foreach ($item['metadata'] as $meta) {
+                    if ($meta['metadatum_id'] == $date_field) {
+                        $date_value = $meta['value'];
+                        break;
+                    }
+                }
+            }
+            // Se for string, tenta como nome do campo
+            elseif (isset($item[$date_field])) {
+                $date_value = $item[$date_field];
+            }
+            
+            error_log("Date value for item {$item['id']}: $date_value");
             
             if (empty($date_value)) {
                 continue;
@@ -176,7 +220,7 @@ class TEI_Timeline_Shortcode {
             if ($image_url) {
                 $event['media'] = [
                     'url' => $image_url,
-                    'thumbnail' => $item['thumbnail']['thumbnail'] ?? '',
+                    'thumbnail' => $item['thumbnail'] ?? '',
                     'caption' => TEI_Sanitizer::escape($this->get_field_value($item, $title_field, $item['title']), 'html')
                 ];
             }
@@ -283,16 +327,29 @@ class TEI_Timeline_Shortcode {
             return $default;
         }
         
-        if (isset($item['metadata'][$field_id])) {
-            $value = $item['metadata'][$field_id]['value'] ?? $default;
-            
-            if (is_array($value) && !empty($value)) {
-                return $value[0];
-            }
-            
-            return $value;
+        // Para campos especiais
+        if ($field_id === 'title' && isset($item['title'])) {
+            return is_array($item['title']) ? $item['title']['rendered'] : $item['title'];
         }
         
+        if ($field_id === 'description' && isset($item['description'])) {
+            return is_array($item['description']) ? $item['description']['rendered'] : $item['description'];
+        }
+        
+        if ($field_id === 'thumbnail' && isset($item['thumbnail'])) {
+            return $item['thumbnail'];
+        }
+        
+        // Para metadados do Tainacan (usando ID numérico)
+        if (is_numeric($field_id) && isset($item['metadata'])) {
+            foreach ($item['metadata'] as $meta) {
+                if ($meta['metadatum_id'] == $field_id) {
+                    return $meta['value'];
+                }
+            }
+        }
+        
+        // Tenta direto no item
         if (isset($item[$field_id])) {
             return $item[$field_id];
         }
