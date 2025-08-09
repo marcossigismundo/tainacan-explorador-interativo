@@ -32,11 +32,11 @@ require_once TEI_PLUGIN_DIR . 'includes/class-cache-manager.php';
 require_once TEI_PLUGIN_DIR . 'includes/class-api-handler.php';
 require_once TEI_PLUGIN_DIR . 'includes/class-sanitizer.php';
 
-// Carrega classes admin - CORREÇÃO: nome correto do arquivo
+// Carrega classes admin
 require_once TEI_PLUGIN_DIR . 'admin/class-admin-page.php';
 require_once TEI_PLUGIN_DIR . 'admin/class-ajax-handler.php';
 
-// Carrega shortcodes - usar apenas as versões class-*
+// Carrega shortcodes
 require_once TEI_PLUGIN_DIR . 'shortcodes/class-mapa-shortcode.php';
 require_once TEI_PLUGIN_DIR . 'shortcodes/class-timeline-shortcode.php';
 require_once TEI_PLUGIN_DIR . 'shortcodes/class-story-shortcode.php';
@@ -85,103 +85,6 @@ class TainacanExploradorInterativo {
     private function init_hooks() {
         // Internacionalização
         add_action('plugins_loaded', [$this, 'load_textdomain']);
-        add_action('init', [$this, 'register_preview_endpoint']);
-add_action('template_redirect', [$this, 'handle_preview']);
-
-// Adicione estes novos métodos na classe:
-
-/**
- * Registra endpoint de preview
- */
-public function register_preview_endpoint() {
-    add_rewrite_rule(
-        '^preview/?$',
-        'index.php?tei_preview=1',
-        'top'
-    );
-    
-    add_filter('query_vars', function($vars) {
-        $vars[] = 'tei_preview';
-        return $vars;
-    });
-}
-
-/**
- * Handle preview requests
- */
-public function handle_preview() {
-    if (!get_query_var('tei_preview')) {
-        return;
-    }
-    
-    // Verifica permissões
-    if (!current_user_can('manage_tainacan_explorer')) {
-        wp_die(__('Acesso negado', 'tainacan-explorador'));
-    }
-    
-    $type = sanitize_key($_GET['type'] ?? '');
-    $collection = intval($_GET['collection'] ?? 0);
-    
-    if (!$type || !$collection) {
-        wp_die(__('Parâmetros inválidos', 'tainacan-explorador'));
-    }
-    
-    // Renderiza preview
-    $this->render_preview($type, $collection);
-    exit;
-}
-
-/**
- * Renderiza preview
- */
-private function render_preview($type, $collection_id) {
-    ?>
-    <!DOCTYPE html>
-    <html <?php language_attributes(); ?>>
-    <head>
-        <meta charset="<?php bloginfo('charset'); ?>">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title><?php echo sprintf(__('Preview - %s', 'tainacan-explorador'), ucfirst($type)); ?></title>
-        <?php wp_head(); ?>
-        <style>
-            body { margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-            .preview-header { background: #f0f0f1; padding: 15px; margin: -20px -20px 20px; border-bottom: 1px solid #c3c4c7; }
-            .preview-title { margin: 0; font-size: 18px; color: #1d2327; }
-            .preview-close { float: right; text-decoration: none; color: #787c82; }
-            .preview-close:hover { color: #2271b1; }
-            .preview-container { max-width: 1200px; margin: 0 auto; }
-        </style>
-    </head>
-    <body>
-        <div class="preview-header">
-            <a href="#" class="preview-close" onclick="window.close()">✕ <?php _e('Fechar', 'tainacan-explorador'); ?></a>
-            <h1 class="preview-title">
-                <?php echo sprintf(__('Preview: %s - Coleção #%d', 'tainacan-explorador'), ucfirst($type), $collection_id); ?>
-            </h1>
-        </div>
-        
-        <div class="preview-container">
-            <?php
-            // Renderiza shortcode correspondente
-            switch($type) {
-                case 'map':
-                    echo do_shortcode('[tainacan_explorador_mapa collection="' . $collection_id . '" height="600px"]');
-                    break;
-                case 'timeline':
-                    echo do_shortcode('[tainacan_explorador_timeline collection="' . $collection_id . '"]');
-                    break;
-                case 'story':
-                    echo do_shortcode('[tainacan_explorador_story collection="' . $collection_id . '"]');
-                    break;
-                default:
-                    echo '<p>' . __('Tipo de visualização inválido', 'tainacan-explorador') . '</p>';
-            }
-            ?>
-        </div>
-        
-        <?php wp_footer(); ?>
-    </body>
-    </html>
         
         // Admin
         if (is_admin()) {
@@ -200,6 +103,10 @@ private function render_preview($type, $collection_id) {
         
         // Shortcodes
         add_action('init', [$this, 'register_shortcodes']);
+        
+        // Preview
+        add_action('init', [$this, 'register_preview_endpoint']);
+        add_action('template_redirect', [$this, 'handle_preview']);
         
         // Cache cleanup
         add_action('tei_cache_cleanup', ['TEI_Cache_Manager', 'cleanup_expired']);
@@ -267,6 +174,104 @@ private function render_preview($type, $collection_id) {
         exit;
     }
     
+    /**
+     * Registra endpoint de preview
+     */
+    public function register_preview_endpoint() {
+        add_rewrite_rule(
+            '^preview/?$',
+            'index.php?tei_preview=1',
+            'top'
+        );
+        
+        add_filter('query_vars', function($vars) {
+            $vars[] = 'tei_preview';
+            return $vars;
+        });
+    }
+    
+    /**
+     * Handle preview requests
+     */
+    public function handle_preview() {
+        if (!get_query_var('tei_preview')) {
+            return;
+        }
+        
+        // Verifica permissões
+        if (!current_user_can('manage_tainacan_explorer')) {
+            wp_die(__('Acesso negado', 'tainacan-explorador'));
+        }
+        
+        $type = sanitize_key($_GET['type'] ?? '');
+        $collection = intval($_GET['collection'] ?? 0);
+        
+        if (!$type || !$collection) {
+            wp_die(__('Parâmetros inválidos', 'tainacan-explorador'));
+        }
+        
+        // Renderiza preview
+        $this->render_preview($type, $collection);
+        exit;
+    }
+    
+    /**
+     * Renderiza preview
+     */
+    private function render_preview($type, $collection_id) {
+        // Força carregamento de assets
+        $this->conditionally_enqueue_assets(true, $type);
+        
+        ?>
+        <!DOCTYPE html>
+        <html <?php language_attributes(); ?>>
+        <head>
+            <meta charset="<?php bloginfo('charset'); ?>">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title><?php echo sprintf(__('Preview - %s', 'tainacan-explorador'), ucfirst($type)); ?></title>
+            <?php wp_head(); ?>
+            <style>
+                body { margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+                .preview-header { background: #f0f0f1; padding: 15px; margin: -20px -20px 20px; border-bottom: 1px solid #c3c4c7; }
+                .preview-title { margin: 0; font-size: 18px; color: #1d2327; }
+                .preview-close { float: right; text-decoration: none; color: #787c82; }
+                .preview-close:hover { color: #2271b1; }
+                .preview-container { max-width: 1200px; margin: 0 auto; }
+            </style>
+        </head>
+        <body>
+            <div class="preview-header">
+                <a href="#" class="preview-close" onclick="window.close()">✕ <?php _e('Fechar', 'tainacan-explorador'); ?></a>
+                <h1 class="preview-title">
+                    <?php echo sprintf(__('Preview: %s - Coleção #%d', 'tainacan-explorador'), ucfirst($type), $collection_id); ?>
+                </h1>
+            </div>
+            
+            <div class="preview-container">
+                <?php
+                // Renderiza shortcode correspondente
+                switch($type) {
+                    case 'map':
+                        echo do_shortcode('[tainacan_explorador_mapa collection="' . $collection_id . '" height="600px"]');
+                        break;
+                    case 'timeline':
+                        echo do_shortcode('[tainacan_explorador_timeline collection="' . $collection_id . '"]');
+                        break;
+                    case 'story':
+                        echo do_shortcode('[tainacan_explorador_story collection="' . $collection_id . '"]');
+                        break;
+                    default:
+                        echo '<p>' . __('Tipo de visualização inválido', 'tainacan-explorador') . '</p>';
+                }
+                ?>
+            </div>
+            
+            <?php wp_footer(); ?>
+        </body>
+        </html>
+        <?php
+    }
+    
     public function register_rest_routes() {
         if (class_exists('TEI_API_Endpoints')) {
             $api = new TEI_API_Endpoints();
@@ -286,16 +291,23 @@ private function render_preview($type, $collection_id) {
         }
     }
     
-    public function conditionally_enqueue_assets() {
+    public function conditionally_enqueue_assets($force = false, $type = null) {
         global $post;
         
-        if (!is_a($post, 'WP_Post')) {
-            return;
+        // Para preview, força carregamento
+        if ($force) {
+            $has_map = ($type === 'map');
+            $has_timeline = ($type === 'timeline');
+            $has_story = ($type === 'story');
+        } else {
+            if (!is_a($post, 'WP_Post')) {
+                return;
+            }
+            
+            $has_map = has_shortcode($post->post_content, 'tainacan_explorador_mapa');
+            $has_timeline = has_shortcode($post->post_content, 'tainacan_explorador_timeline');
+            $has_story = has_shortcode($post->post_content, 'tainacan_explorador_story');
         }
-        
-        $has_map = has_shortcode($post->post_content, 'tainacan_explorador_mapa');
-        $has_timeline = has_shortcode($post->post_content, 'tainacan_explorador_timeline');
-        $has_story = has_shortcode($post->post_content, 'tainacan_explorador_story');
         
         if ($has_map || $has_timeline || $has_story) {
             // CSS comum
@@ -430,4 +442,3 @@ add_filter('plugin_action_links_' . TEI_PLUGIN_BASENAME, function($links) {
     array_unshift($links, $settings_link);
     return $links;
 });
-
