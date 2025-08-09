@@ -468,7 +468,7 @@ class TEI_Timeline_Shortcode {
         </div>
         
         <style>
-        @media (max-width: 768px) {
+        @media (max-width: 100%) {
             .tei-timeline-container {
                 width: 100vw !important;
                 margin: 0 !important;
