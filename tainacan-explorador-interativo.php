@@ -331,18 +331,18 @@ class TainacanExploradorInterativo {
             wp_enqueue_script('leaflet', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', [], '1.9.4', true);
             wp_enqueue_script('leaflet-markercluster', 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js', ['leaflet'], '1.5.3', true);
             wp_enqueue_style('leaflet-markercluster', 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css', ['leaflet'], '1.5.3');
-            wp_enqueue_script('tei-map', TEI_PLUGIN_URL . 'assets/js/maps.js', ['leaflet', 'tei-common'], TEI_VERSION, true);
+            wp_enqueue_script('tei-map', TEI_PLUGIN_URL . 'assets/js/visualizations/maps.js', ['leaflet', 'tei-common'], TEI_VERSION, true);
         }
         
         if ($has_timeline) {
             wp_enqueue_style('timeline-js', 'https://cdn.knightlab.com/libs/timeline3/latest/css/timeline.css', [], '3.8.0');
             wp_enqueue_script('timeline-js', 'https://cdn.knightlab.com/libs/timeline3/latest/js/timeline.js', [], '3.8.0', true);
-            wp_enqueue_script('tei-timeline', TEI_PLUGIN_URL . 'assets/js/timeline.js', ['timeline-js', 'tei-common'], TEI_VERSION, true);
+            wp_enqueue_script('tei-timeline', TEI_PLUGIN_URL . 'assets/js/visualizations/timeline.js', ['timeline-js', 'tei-common'], TEI_VERSION, true);
         }
         
         if ($has_story) {
             wp_enqueue_script('scrollama', 'https://unpkg.com/scrollama@3.2.0/build/scrollama.min.js', [], '3.2.0', true);
-            wp_enqueue_script('tei-story', TEI_PLUGIN_URL . 'assets/js/story.js', ['scrollama', 'tei-common'], TEI_VERSION, true);
+            wp_enqueue_script('tei-story', TEI_PLUGIN_URL . 'assets/js/visualizations/story.js', ['scrollama', 'tei-common'], TEI_VERSION, true);
             wp_enqueue_style('tei-story', TEI_PLUGIN_URL . 'assets/css/story.css', [], TEI_VERSION);
         }
     }
