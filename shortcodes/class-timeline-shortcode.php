@@ -412,13 +412,10 @@ class TEI_Timeline_Shortcode {
     private function render_timeline($timeline_id, $timeline_data, $config, $atts) {
         ob_start();
         ?>
-        <div class="tei-timeline-container <?php echo esc_attr($atts['class']); ?>">
+        <div class="tei-timeline-container <?php echo esc_attr($atts['class']); ?>" style="width: 100vw; height: 100vh; position: relative; left: 50%; right: 50%; margin-left: -50vw; margin-right: -50vw;">
             <div id="<?php echo esc_attr($timeline_id); ?>" 
                  class="tei-timeline" 
-                 data-tei-timeline="true"
-                 data-tei-timeline-config='<?php echo esc_attr(wp_json_encode($config)); ?>'
-                 data-tei-timeline-data='<?php echo esc_attr(wp_json_encode($timeline_data)); ?>'
-                 style="height: <?php echo esc_attr($atts['height']); ?>; width: <?php echo esc_attr($atts['width']); ?>;">
+                 style="height: 100%; width: 100%;">
             </div>
             
             <?php if (empty($timeline_data['events'])): ?>
@@ -426,17 +423,71 @@ class TEI_Timeline_Shortcode {
                 <p><?php esc_html_e('Nenhum evento encontrado para exibir na linha do tempo.', 'tainacan-explorador'); ?></p>
             </div>
             <?php else: ?>
-            <div class="tei-loading-overlay">
+            <div class="tei-loading-overlay" id="tei-loading-<?php echo esc_attr($timeline_id); ?>" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.9); display: flex; align-items: center; justify-content: center; z-index: 1000;">
                 <div class="tei-loading-content">
                     <div class="tei-spinner"></div>
                     <p><?php esc_html_e('Carregando linha do tempo...', 'tainacan-explorador'); ?></p>
                 </div>
             </div>
+            
+            <script type="text/javascript">
+            (function() {
+                var timelineData = <?php echo wp_json_encode($timeline_data); ?>;
+                var timelineConfig = <?php echo wp_json_encode($config); ?>;
+                var timelineId = '<?php echo esc_js($timeline_id); ?>';
+                
+                function initTimeline() {
+                    if (typeof TL !== 'undefined' && TL.Timeline) {
+                        try {
+                            new TL.Timeline(timelineId, timelineData, timelineConfig);
+                            // Remove loading após criar timeline
+                            var loading = document.getElementById('tei-loading-' + timelineId);
+                            if (loading) {
+                                loading.style.display = 'none';
+                            }
+                        } catch(e) {
+                            console.error('Erro ao criar timeline:', e);
+                            var loading = document.getElementById('tei-loading-' + timelineId);
+                            if (loading) {
+                                loading.innerHTML = '<p>Erro ao carregar timeline</p>';
+                            }
+                        }
+                    } else {
+                        setTimeout(initTimeline, 100);
+                    }
+                }
+                
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', initTimeline);
+                } else {
+                    initTimeline();
+                }
+            })();
+            </script>
             <?php endif; ?>
         </div>
+        
+        <style>
+        @media (max-width: 768px) {
+            .tei-timeline-container {
+                width: 100vw !important;
+                margin: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+            }
+            .tl-timeline {
+                font-size: 14px !important;
+            }
+        }
+        </style>
         <?php
         
-        return ob_get_clean();
+        $output = ob_get_clean();
+        
+        // Remove quebras de linha extras que podem causar problemas JSON
+        $output = trim($output);
+        
+        return $output;
     }
     
     /**
