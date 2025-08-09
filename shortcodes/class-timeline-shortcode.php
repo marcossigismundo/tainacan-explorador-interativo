@@ -144,10 +144,6 @@ class TEI_Timeline_Shortcode {
      * Processa dados para o formato TimelineJS
      */
     private function process_timeline_data($response, $mapping) {
-        // Debug - log dos dados recebidos
-        error_log('TEI Timeline Data: ' . print_r($response, true));
-        error_log('TEI Timeline Mapping: ' . print_r($mapping, true));
-        
         $timeline_data = [
             'title' => [
                 'text' => [
@@ -165,17 +161,7 @@ class TEI_Timeline_Shortcode {
         $category_field = $mapping['mapping_data']['category'] ?? '';
         $link_field = $mapping['mapping_data']['link'] ?? '';
         
-        // Debug - log dos campos mapeados
-        error_log("Date field: $date_field, Title field: $title_field");
-        
         foreach ($response['items'] as $item) {
-            // Debug - primeiro item
-            static $first = true;
-            if ($first) {
-                error_log('First item structure: ' . print_r($item, true));
-                $first = false;
-            }
-            
             // Obtém data - tenta diferentes formas
             $date_value = null;
             
@@ -194,8 +180,6 @@ class TEI_Timeline_Shortcode {
             elseif (isset($item[$date_field])) {
                 $date_value = $item[$date_field];
             }
-            
-            error_log("Date value for item {$item['id']}: $date_value");
             
             if (empty($date_value)) {
                 continue;
