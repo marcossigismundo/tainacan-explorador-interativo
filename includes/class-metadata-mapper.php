@@ -46,8 +46,14 @@ class TEI_Metadata_Mapper {
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
         
-        // Adiciona índice para performance
-        $wpdb->query("CREATE INDEX idx_collection_type ON $table_name (collection_id, mapping_type)");
+        // Verifica se o índice já existe antes de criar
+        $index_exists = $wpdb->get_var(
+            "SHOW INDEX FROM $table_name WHERE Key_name = 'idx_collection_type'"
+        );
+        
+        if (!$index_exists) {
+            $wpdb->query("CREATE INDEX idx_collection_type ON $table_name (collection_id, mapping_type)");
+        }
     }
     
     /**
@@ -234,8 +240,12 @@ class TEI_Metadata_Mapper {
         
         $where_sql = implode(' AND ', $where_clauses);
         
+        // Sanitiza orderby e order
+        $orderby = in_array($args['orderby'], ['updated_at', 'created_at', 'id']) ? $args['orderby'] : 'updated_at';
+        $order = strtoupper($args['order']) === 'ASC' ? 'ASC' : 'DESC';
+        
         $query = $wpdb->prepare(
-            "SELECT * FROM $table_name WHERE $where_sql ORDER BY {$args['orderby']} {$args['order']} LIMIT %d OFFSET %d",
+            "SELECT * FROM $table_name WHERE $where_sql ORDER BY $orderby $order LIMIT %d OFFSET %d",
             array_merge($where_values, [$args['limit'], $args['offset']])
         );
         
