@@ -26,7 +26,7 @@ class TEI_API_Handler {
      * Construtor
      */
     public function __construct() {
-        $this->api_base = rest_url('tainacan/v2');
+        $this->api_base = rest_url('wp/v2');
     }
     
     /**
@@ -54,18 +54,49 @@ class TEI_API_Handler {
             return $cached;
         }
         
-        // Faz requisição
-        $response = $this->make_request('/collections', $args);
+        // Usa API direta do Tainacan
+        $collections = [];
         
-        if (is_wp_error($response)) {
-            return $response;
+        if (class_exists('\Tainacan\Repositories\Collections')) {
+            $repository = \Tainacan\Repositories\Collections::get_instance();
+            
+            $tainacan_args = [
+                'posts_per_page' => $args['perpage'],
+                'paged' => $args['paged'],
+                'post_status' => $args['status'],
+                'orderby' => $args['orderby'],
+                'order' => $args['order']
+            ];
+            
+            $tainacan_collections = $repository->fetch($tainacan_args);
+            
+            if ($tainacan_collections) {
+                foreach ($tainacan_collections as $col) {
+                    $collections[] = [
+                        'id' => $col->get_id(),
+                        'name' => $col->get_name(),
+                        'description' => $col->get_description(),
+                        'slug' => $col->get_slug(),
+                        'items_count' => $repository->count_items($col->get_id()),
+                        'thumbnail' => $col->get_thumbnail(),
+                        'status' => $col->get_status(),
+                        'url' => $col->get_url()
+                    ];
+                }
+            }
+        } else {
+            // Fallback para REST API
+            $response = $this->make_request('/tainacan/v2/collections', $args);
+            
+            if (!is_wp_error($response)) {
+                $collections = $this->parse_collections_response($response);
+            }
         }
         
-        // Processa resposta
-        $collections = $this->parse_collections_response($response);
-        
         // Cache por 1 hora
-        TEI_Cache_Manager::set($cache_key, $collections, HOUR_IN_SECONDS);
+        if (!empty($collections)) {
+            TEI_Cache_Manager::set($cache_key, $collections, HOUR_IN_SECONDS);
+        }
         
         return $collections;
     }
@@ -84,20 +115,53 @@ class TEI_API_Handler {
             return $cached;
         }
         
-        $endpoint = sprintf('/collection/%d/metadata', $collection_id);
-        $response = $this->make_request($endpoint, [
-            'perpage' => 100,
-            'include_disabled' => false
-        ]);
+        $metadata = [];
         
-        if (is_wp_error($response)) {
-            return $response;
+        if (class_exists('\Tainacan\Repositories\Metadata')) {
+            $repository = \Tainacan\Repositories\Metadata::get_instance();
+            
+            $args = [
+                'collection_id' => $collection_id,
+                'include_disabled' => false
+            ];
+            
+            $tainacan_metadata = $repository->fetch_by_collection(
+                new \Tainacan\Entities\Collection($collection_id),
+                $args
+            );
+            
+            if ($tainacan_metadata) {
+                foreach ($tainacan_metadata as $meta) {
+                    $metadata[] = [
+                        'id' => $meta->get_id(),
+                        'name' => $meta->get_name(),
+                        'slug' => $meta->get_slug(),
+                        'type' => $this->get_metadata_type($meta->get_metadata_type()),
+                        'cardinality' => $meta->get_cardinality(),
+                        'required' => $meta->get_required(),
+                        'collection_key' => $meta->get_collection_key(),
+                        'multiple' => $meta->get_multiple(),
+                        'options' => $meta->get_metadata_type_options()
+                    ];
+                }
+            }
+        } else {
+            // Fallback para REST API
+            $endpoint = sprintf('/tainacan/v2/collection/%d/metadata', $collection_id);
+            $response = $this->make_request($endpoint, [
+                'perpage' => 100,
+                'include_disabled' => false
+            ]);
+            
+            if (!is_wp_error($response)) {
+                $metadata = $this->parse_metadata_response($response);
+            }
         }
         
-        $metadata = $this->parse_metadata_response($response);
-        
         // Cache por 1 dia
-        TEI_Cache_Manager::set($cache_key, $metadata, DAY_IN_SECONDS);
+        if (!empty($metadata)) {
+            TEI_Cache_Manager::set($cache_key, $metadata, DAY_IN_SECONDS);
+        }
         
         return $metadata;
     }
@@ -128,77 +192,77 @@ class TEI_API_Handler {
             return $cached;
         }
         
-        $endpoint = sprintf('/collection/%d/items', $collection_id);
-        $response = $this->make_request($endpoint, $args);
+        $items = ['items' => [], 'total' => 0];
         
-        if (is_wp_error($response)) {
-            return $response;
+        if (class_exists('\Tainacan\Repositories\Items')) {
+            $repository = \Tainacan\Repositories\Items::get_instance();
+            
+            $tainacan_args = [
+                'posts_per_page' => $args['perpage'],
+                'paged' => $args['paged'],
+                'post_status' => $args['status']
+            ];
+            
+            $collection = new \Tainacan\Entities\Collection($collection_id);
+            $tainacan_items = $repository->fetch($tainacan_args, $collection);
+            
+            if ($tainacan_items) {
+                foreach ($tainacan_items as $item) {
+                    $parsed_item = [
+                        'id' => $item->get_id(),
+                        'title' => $item->get_title(),
+                        'description' => $item->get_description(),
+                        'url' => $item->get_url(),
+                        'status' => $item->get_status(),
+                        'thumbnail' => []
+                    ];
+                    
+                    // Thumbnail
+                    $thumbnail_id = $item->get_thumbnail_id();
+                    if ($thumbnail_id) {
+                        $parsed_item['thumbnail'] = [
+                            'full' => wp_get_attachment_url($thumbnail_id),
+                            'medium' => wp_get_attachment_image_url($thumbnail_id, 'medium'),
+                            'thumbnail' => wp_get_attachment_image_url($thumbnail_id, 'thumbnail')
+                        ];
+                    }
+                    
+                    // Metadata
+                    $parsed_item['metadata'] = [];
+                    $item_metadata = $item->get_metadata();
+                    if ($item_metadata) {
+                        foreach ($item_metadata as $meta) {
+                            $meta_key = $meta->get_metadatum()->get_id();
+                            $parsed_item['metadata'][$meta_key] = [
+                                'name' => $meta->get_metadatum()->get_name(),
+                                'value' => $meta->get_value(),
+                                'value_as_html' => $meta->get_value_as_html(),
+                                'value_as_string' => $meta->get_value_as_string()
+                            ];
+                        }
+                    }
+                    
+                    $items['items'][] = $parsed_item;
+                }
+                
+                $items['total'] = $repository->count_items($collection_id);
+            }
+        } else {
+            // Fallback para REST API
+            $endpoint = sprintf('/tainacan/v2/collection/%d/items', $collection_id);
+            $response = $this->make_request($endpoint, $args);
+            
+            if (!is_wp_error($response)) {
+                $items = $this->parse_items_response($response);
+            }
         }
         
-        $items = $this->parse_items_response($response);
-        
         // Cache por 30 minutos
-        if (!isset($args['no_cache'])) {
+        if (!isset($args['no_cache']) && !empty($items['items'])) {
             TEI_Cache_Manager::set($cache_key, $items, 30 * MINUTE_IN_SECONDS);
         }
         
         return $items;
-    }
-    
-    /**
-     * Obtém um item específico
-     * 
-     * @param int $collection_id ID da coleção
-     * @param int $item_id ID do item
-     * @return array|WP_Error
-     */
-    public function get_item($collection_id, $item_id) {
-        $cache_key = 'item_' . $collection_id . '_' . $item_id;
-        $cached = TEI_Cache_Manager::get($cache_key);
-        
-        if ($cached !== false) {
-            return $cached;
-        }
-        
-        $endpoint = sprintf('/collection/%d/items/%d', $collection_id, $item_id);
-        $response = $this->make_request($endpoint);
-        
-        if (is_wp_error($response)) {
-            return $response;
-        }
-        
-        $item = $this->parse_item_response($response);
-        
-        // Cache por 1 hora
-        TEI_Cache_Manager::set($cache_key, $item, HOUR_IN_SECONDS);
-        
-        return $item;
-    }
-    
-    /**
-     * Busca itens em múltiplas coleções
-     * 
-     * @param string $search_query Query de busca
-     * @param array $args Argumentos adicionais
-     * @return array|WP_Error
-     */
-    public function search_items($search_query, $args = []) {
-        $defaults = [
-            'perpage' => 50,
-            'paged' => 1,
-            'search' => $search_query,
-            'sentence' => true
-        ];
-        
-        $args = wp_parse_args($args, $defaults);
-        
-        $response = $this->make_request('/items', $args);
-        
-        if (is_wp_error($response)) {
-            return $response;
-        }
-        
-        return $this->parse_items_response($response);
     }
     
     /**
@@ -432,47 +496,125 @@ class TEI_API_Handler {
     }
     
     /**
-     * Obtém taxonomias de uma coleção
-     * 
-     * @param int $collection_id ID da coleção
-     * @return array|WP_Error
+     * Geocodifica endereço
      */
-    public function get_collection_taxonomies($collection_id) {
-        $cache_key = 'collection_taxonomies_' . $collection_id;
-        $cached = TEI_Cache_Manager::get($cache_key);
+    public function geocode_address($address) {
+        $settings = get_option('tei_settings', []);
+        $service = $settings['geocoding_service'] ?? 'nominatim';
         
-        if ($cached !== false) {
-            return $cached;
+        switch ($service) {
+            case 'nominatim':
+                return $this->geocode_nominatim($address);
+            case 'google':
+                return $this->geocode_google($address, $settings['geocoding_api_key'] ?? '');
+            case 'mapbox':
+                return $this->geocode_mapbox($address, $settings['geocoding_api_key'] ?? '');
         }
         
-        $endpoint = sprintf('/collection/%d/metadata', $collection_id);
-        $response = $this->make_request($endpoint, [
-            'metaquery' => [
-                [
-                    'key' => 'metadata_type',
-                    'value' => 'Tainacan\\Metadata_Types\\Taxonomy'
-                ]
+        return null;
+    }
+    
+    /**
+     * Geocoding via Nominatim
+     */
+    private function geocode_nominatim($address) {
+        $url = 'https://nominatim.openstreetmap.org/search?' . http_build_query([
+            'q' => $address,
+            'format' => 'json',
+            'limit' => 1
+        ]);
+        
+        $response = wp_remote_get($url, [
+            'timeout' => 10,
+            'headers' => [
+                'User-Agent' => 'TainacanExplorador/1.0'
             ]
         ]);
         
         if (is_wp_error($response)) {
-            return $response;
+            return null;
         }
         
-        $taxonomies = [];
-        foreach ($response as $tax) {
-            if (isset($tax['metadata_type_options']['taxonomy_id'])) {
-                $taxonomies[] = [
-                    'id' => $tax['id'],
-                    'name' => $tax['name'],
-                    'taxonomy_id' => $tax['metadata_type_options']['taxonomy_id']
-                ];
-            }
+        $data = json_decode(wp_remote_retrieve_body($response), true);
+        
+        if (empty($data) || !isset($data[0]['lat'])) {
+            return null;
         }
         
-        TEI_Cache_Manager::set($cache_key, $taxonomies, DAY_IN_SECONDS);
+        return [
+            'lat' => floatval($data[0]['lat']),
+            'lon' => floatval($data[0]['lon']),
+            'display_name' => $data[0]['display_name'] ?? $address
+        ];
+    }
+    
+    /**
+     * Geocoding via Google Maps
+     */
+    private function geocode_google($address, $api_key) {
+        if (empty($api_key)) {
+            return null;
+        }
         
-        return $taxonomies;
+        $url = 'https://maps.googleapis.com/maps/api/geocode/json?' . http_build_query([
+            'address' => $address,
+            'key' => $api_key
+        ]);
+        
+        $response = wp_remote_get($url, ['timeout' => 10]);
+        
+        if (is_wp_error($response)) {
+            return null;
+        }
+        
+        $data = json_decode(wp_remote_retrieve_body($response), true);
+        
+        if (empty($data['results']) || !isset($data['results'][0]['geometry'])) {
+            return null;
+        }
+        
+        $location = $data['results'][0]['geometry']['location'];
+        
+        return [
+            'lat' => floatval($location['lat']),
+            'lon' => floatval($location['lng']),
+            'display_name' => $data['results'][0]['formatted_address'] ?? $address
+        ];
+    }
+    
+    /**
+     * Geocoding via Mapbox
+     */
+    private function geocode_mapbox($address, $api_key) {
+        if (empty($api_key)) {
+            return null;
+        }
+        
+        $url = sprintf(
+            'https://api.mapbox.com/geocoding/v5/mapbox.places/%s.json?access_token=%s',
+            urlencode($address),
+            $api_key
+        );
+        
+        $response = wp_remote_get($url, ['timeout' => 10]);
+        
+        if (is_wp_error($response)) {
+            return null;
+        }
+        
+        $data = json_decode(wp_remote_retrieve_body($response), true);
+        
+        if (empty($data['features'])) {
+            return null;
+        }
+        
+        $coordinates = $data['features'][0]['geometry']['coordinates'];
+        
+        return [
+            'lat' => floatval($coordinates[1]),
+            'lon' => floatval($coordinates[0]),
+            'display_name' => $data['features'][0]['place_name'] ?? $address
+        ];
     }
     
     /**
@@ -481,7 +623,13 @@ class TEI_API_Handler {
      * @return bool|WP_Error
      */
     public function validate_connection() {
-        $response = $this->make_request('/collections', ['perpage' => 1]);
+        // Testa usando API direta
+        if (class_exists('\Tainacan\Repositories\Collections')) {
+            return true;
+        }
+        
+        // Testa REST API
+        $response = $this->make_request('/tainacan/v2/collections', ['perpage' => 1]);
         
         if (is_wp_error($response)) {
             return $response;
