@@ -104,6 +104,9 @@ class TainacanExploradorInterativo {
         // Shortcodes
         add_action('init', [$this, 'register_shortcodes']);
         
+        // Fix para erro JSON no editor
+        add_filter('no_texturize_shortcodes', [$this, 'exclude_shortcodes_from_wptexturize']);
+        
         // Preview
         add_action('init', [$this, 'register_preview_endpoint']);
         add_action('template_redirect', [$this, 'handle_preview']);
@@ -270,6 +273,16 @@ class TainacanExploradorInterativo {
         </body>
         </html>
         <?php
+    }
+    
+    /**
+     * Exclui shortcodes do wptexturize
+     */
+    public function exclude_shortcodes_from_wptexturize($shortcodes) {
+        $shortcodes[] = 'tainacan_explorador_timeline';
+        $shortcodes[] = 'tainacan_explorador_mapa';
+        $shortcodes[] = 'tainacan_explorador_story';
+        return $shortcodes;
     }
     
     public function register_rest_routes() {
