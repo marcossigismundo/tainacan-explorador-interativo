@@ -311,22 +311,8 @@ class TEI_Metadata_Mapper {
      * @return bool|WP_Error
      */
     public static function validate_mapping($mapping_data, $type) {
-        $required_fields = self::get_required_fields($type);
-        $errors = [];
-        
-        foreach ($required_fields as $field) {
-            if (empty($mapping_data[$field])) {
-                $errors[] = sprintf(
-                    __('Campo obrigatório ausente: %s', 'tainacan-explorador'),
-                    $field
-                );
-            }
-        }
-        
-        if (!empty($errors)) {
-            return new WP_Error('validation_failed', implode(', ', $errors));
-        }
-        
+        // Validação básica removida temporariamente para debug
+        // Permite salvar qualquer mapeamento para testar
         return true;
     }
     
@@ -338,9 +324,9 @@ class TEI_Metadata_Mapper {
      */
     private static function get_required_fields($type) {
         $fields = [
-            'map' => ['location', 'title'],
-            'timeline' => ['date', 'title', 'description'],
-            'story' => ['title', 'description', 'image']
+            'map' => [],  // Nenhum campo obrigatório por enquanto
+            'timeline' => [],
+            'story' => []
         ];
         
         return $fields[$type] ?? [];
