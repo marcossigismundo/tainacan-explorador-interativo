@@ -1,0 +1,381 @@
+# Copyright (C) 2024 Explorador Interativo para Tainacan
+# This file is distributed under the GPLv3 or later.
+msgid ""
+msgstr ""
+"Project-Id-Version: Explorador Interativo para Tainacan 1.0.0\n"
+"Report-Msgid-Bugs-To: https://github.com/seu-usuario/tainacan-explorador/issues\n"
+"POT-Creation-Date: 2024-01-15 12:00:00+00:00\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+
+#: tainacan-explorador-interativo.php:45
+msgid "Explorador Interativo requer o plugin Tainacan ativo para funcionar."
+msgstr ""
+
+#: admin/class-admin-page.php:28
+msgid "Explorador Interativo"
+msgstr ""
+
+#: admin/class-admin-page.php:40
+msgid "Configurações do Explorador"
+msgstr ""
+
+#: admin/class-admin-page.php:41
+msgid "Configurações"
+msgstr ""
+
+#: admin/class-admin-page.php:49
+msgid "Importar/Exportar"
+msgstr ""
+
+#: admin/class-admin-page.php:57
+msgid "Ajuda"
+msgstr ""
+
+#: admin/class-admin-page.php:74
+msgid "Você não tem permissão para acessar esta página."
+msgstr ""
+
+#: admin/class-admin-page.php:83
+msgid "Este plugin requer JavaScript para funcionar corretamente."
+msgstr ""
+
+#: admin/class-admin-page.php:112
+msgid "Configurações do Explorador Interativo"
+msgstr ""
+
+#: admin/class-admin-page.php:120
+msgid "Duração do Cache"
+msgstr ""
+
+#: admin/class-admin-page.php:130
+msgid "Tempo de armazenamento em cache dos dados das coleções."
+msgstr ""
+
+#: admin/class-admin-page.php:137
+msgid "Itens por Página"
+msgstr ""
+
+#: admin/class-admin-page.php:144
+msgid "Número padrão de itens carregados por visualização."
+msgstr ""
+
+#: admin/class-admin-page.php:151
+msgid "Serviço de Geocodificação"
+msgstr ""
+
+#: admin/class-admin-page.php:171
+msgid "API Key"
+msgstr ""
+
+#: admin/class-admin-page.php:178
+msgid "Chave de API para o serviço de geocodificação selecionado."
+msgstr ""
+
+#: admin/class-admin-page.php:184
+msgid "Recursos Habilitados"
+msgstr ""
+
+#: admin/class-admin-page.php:190
+msgid "Visualização de Mapa"
+msgstr ""
+
+#: admin/class-admin-page.php:195
+msgid "Linha do Tempo"
+msgstr ""
+
+#: admin/class-admin-page.php:200
+msgid "Storytelling"
+msgstr ""
+
+#: admin/class-admin-page.php:207
+msgid "Modo Debug"
+msgstr ""
+
+#: admin/class-admin-page.php:212
+msgid "Ativar logs detalhados para depuração"
+msgstr ""
+
+#: admin/class-admin-page.php:218
+msgid "Cache"
+msgstr ""
+
+#: admin/class-admin-page.php:223
+msgid "Estatísticas do Cache"
+msgstr ""
+
+#: admin/class-admin-page.php:230
+#, php-format
+msgid "Itens em cache: %d | Tamanho: %s"
+msgstr ""
+
+#: admin/class-admin-page.php:238
+msgid "Limpar Cache"
+msgstr ""
+
+#: admin/class-admin-page.php:267
+msgid "Importar/Exportar Configurações"
+msgstr ""
+
+#: admin/class-admin-page.php:271
+msgid "Exportar Mapeamentos"
+msgstr ""
+
+#: admin/class-admin-page.php:272
+msgid "Exporte todos os mapeamentos configurados para backup ou migração."
+msgstr ""
+
+#: admin/class-admin-page.php:282
+msgid "Importar Mapeamentos"
+msgstr ""
+
+#: admin/class-admin-page.php:289
+msgid "Selecione o arquivo JSON:"
+msgstr ""
+
+#: admin/class-admin-page.php:297
+msgid "Sobrescrever mapeamentos existentes"
+msgstr ""
+
+#: admin/class-admin-page.php:302
+msgid "Importar"
+msgstr ""
+
+#: admin/class-admin-page.php:313
+msgid "Ajuda - Explorador Interativo"
+msgstr ""
+
+#: admin/class-admin-page.php:317
+msgid "Como usar"
+msgstr ""
+
+#: admin/class-admin-page.php:319
+msgid "Selecione uma coleção do Tainacan"
+msgstr ""
+
+#: admin/class-admin-page.php:320
+msgid "Configure o mapeamento dos metadados para cada tipo de visualização"
+msgstr ""
+
+#: admin/class-admin-page.php:321
+msgid "Salve as configurações"
+msgstr ""
+
+#: admin/class-admin-page.php:322
+msgid "Use os shortcodes em suas páginas ou posts"
+msgstr ""
+
+#: admin/class-admin-page.php:327
+msgid "Shortcodes Disponíveis"
+msgstr ""
+
+#: admin/class-admin-page.php:331
+msgid "Shortcode"
+msgstr ""
+
+#: admin/class-admin-page.php:332
+msgid "Descrição"
+msgstr ""
+
+#: admin/class-admin-page.php:333
+msgid "Parâmetros"
+msgstr ""
+
+#: admin/class-admin-page.php:339
+msgid "Exibe mapa interativo"
+msgstr ""
+
+#: admin/class-admin-page.php:344
+msgid "Exibe linha do tempo"
+msgstr ""
+
+#: admin/class-admin-page.php:349
+msgid "Exibe narrativa visual"
+msgstr ""
+
+#: admin/class-admin-page.php:357
+msgid "Suporte"
+msgstr ""
+
+#: admin/class-admin-page.php:359
+#, php-format
+msgid "Para suporte e documentação completa, visite: %s"
+msgstr ""
+
+#: admin/class-admin-page.php:391
+msgid "Carregando..."
+msgstr ""
+
+#: admin/class-admin-page.php:392
+msgid "Erro ao carregar dados"
+msgstr ""
+
+#: admin/class-admin-page.php:393
+msgid "Configurações salvas com sucesso!"
+msgstr ""
+
+#: admin/class-admin-page.php:394
+msgid "Tem certeza que deseja excluir este mapeamento?"
+msgstr ""
+
+#: admin/class-ajax-handler.php:19
+#: admin/class-ajax-handler.php:43
+#: admin/class-ajax-handler.php:82
+msgid "Nonce inválido"
+msgstr ""
+
+#: admin/class-ajax-handler.php:24
+#: admin/class-ajax-handler.php:48
+#: admin/class-ajax-handler.php:87
+msgid "Permissão negada"
+msgstr ""
+
+#: admin/class-ajax-handler.php:58
+msgid "ID da coleção inválido"
+msgstr ""
+
+#: admin/class-ajax-handler.php:118
+msgid "Dados inválidos"
+msgstr ""
+
+#: admin/class-ajax-handler.php:153
+msgid "Erro ao salvar mapeamento"
+msgstr ""
+
+#: admin/class-ajax-handler.php:160
+msgid "Mapeamento salvo com sucesso!"
+msgstr ""
+
+#: admin/class-ajax-handler.php:182
+msgid "ID do mapeamento inválido"
+msgstr ""
+
+#: admin/class-ajax-handler.php:190
+msgid "Erro ao deletar mapeamento"
+msgstr ""
+
+#: admin/class-ajax-handler.php:195
+msgid "Mapeamento deletado com sucesso!"
+msgstr ""
+
+#: admin/class-ajax-handler.php:215
+msgid "Mapeamento não configurado"
+msgstr ""
+
+#: includes/class-metadata-mapper.php:156
+msgid "Dados de mapeamento inválidos"
+msgstr ""
+
+#: includes/class-metadata-mapper.php:432
+#, php-format
+msgid "Campo obrigatório ausente: %s"
+msgstr ""
+
+#: includes/class-metadata-mapper.php:493
+msgid "Dados de importação inválidos"
+msgstr ""
+
+#: includes/class-sanitizer.php:277
+msgid "Este campo é obrigatório"
+msgstr ""
+
+#: includes/class-sanitizer.php:283
+msgid "Email inválido"
+msgstr ""
+
+#: includes/class-sanitizer.php:289
+msgid "URL inválida"
+msgstr ""
+
+#: includes/class-sanitizer.php:295
+msgid "Valor deve ser numérico"
+msgstr ""
+
+#: shortcodes/class-mapa-shortcode.php:39
+#: shortcodes/class-timeline-shortcode.php:35
+#: shortcodes/class-story-shortcode.php:34
+msgid "ID da coleção não especificado."
+msgstr ""
+
+#: shortcodes/class-mapa-shortcode.php:46
+msgid "Mapeamento não configurado para esta coleção."
+msgstr ""
+
+#: shortcodes/class-mapa-shortcode.php:330
+#: shortcodes/class-timeline-shortcode.php:277
+#: shortcodes/class-story-shortcode.php:423
+msgid "Ver mais detalhes"
+msgstr ""
+
+#: shortcodes/class-mapa-shortcode.php:521
+msgid "Carregando mapa..."
+msgstr ""
+
+#: shortcodes/class-mapa-shortcode.php:531
+msgid "Tela cheia"
+msgstr ""
+
+#: shortcodes/class-mapa-shortcode.php:542
+msgid "Buscar no mapa..."
+msgstr ""
+
+#: shortcodes/class-timeline-shortcode.php:42
+msgid "Mapeamento de timeline não configurado para esta coleção."
+msgstr ""
+
+#: shortcodes/class-timeline-shortcode.php:127
+#: shortcodes/class-timeline-shortcode.php:425
+msgid "Timeline"
+msgstr ""
+
+#: shortcodes/class-timeline-shortcode.php:442
+msgid "Carregando linha do tempo..."
+msgstr ""
+
+#: shortcodes/class-timeline-shortcode.php:447
+msgid "Nenhum evento encontrado para exibir na linha do tempo."
+msgstr ""
+
+#: shortcodes/class-story-shortcode.php:41
+msgid "Mapeamento de storytelling não configurado para esta coleção."
+msgstr ""
+
+#: shortcodes/class-story-shortcode.php:62
+msgid "História"
+msgstr ""
+
+#: shortcodes/class-story-shortcode.php:390
+msgid "Ir para capítulo %d"
+msgstr ""
+
+#: shortcodes/class-story-shortcode.php:396
+msgid "Capítulo anterior"
+msgstr ""
+
+#: shortcodes/class-story-shortcode.php:401
+msgid "Próximo capítulo"
+msgstr ""
+
+#: api/class-api-endpoints.php:251
+msgid "Mapeamento não encontrado"
+msgstr ""
+
+#: api/class-api-endpoints.php:283
+msgid "Mapeamento de mapa não configurado"
+msgstr ""
+
+#: api/class-api-endpoints.php:337
+msgid "Mapeamento de timeline não configurado"
+msgstr ""
+
+#: api/class-api-endpoints.php:382
+msgid "Mapeamento de storytelling não configurado"
+msgstr ""
+
+#: api/class-api-endpoints.php:444
+msgid "Não foi possível geocodificar o endereço"
+msgstr ""`
