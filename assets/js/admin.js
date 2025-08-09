@@ -6,7 +6,7 @@
  * @version 1.0.0
  */
 
-(function(wp, window) {
+(function(wp, window, jQuery) {
     'use strict';
     
     const { createElement: el, Fragment, useState, useEffect, useCallback } = wp.element;
@@ -47,9 +47,12 @@
                 });
                 
                 if (response.success) {
-                    setCollections(response.data);
+                    setCollections(response.data || []);
+                } else {
+                    showNotification(response.data?.message || __('Erro ao carregar coleções', 'tainacan-explorador'), 'error');
                 }
             } catch (error) {
+                console.error('Erro:', error);
                 showNotification(__('Erro ao carregar coleções', 'tainacan-explorador'), 'error');
             } finally {
                 setLoading(false);
@@ -68,7 +71,7 @@
                 });
                 
                 if (response.success) {
-                    setSavedMappings(response.data.mappings);
+                    setSavedMappings(response.data?.mappings || []);
                 }
             } catch (error) {
                 console.error('Erro ao carregar mapeamentos:', error);
@@ -89,12 +92,15 @@
                 });
                 
                 if (response.success) {
-                    setMetadata(response.data.metadata);
-                    if (response.data.mappings) {
+                    setMetadata(response.data?.metadata || []);
+                    if (response.data?.mappings) {
                         setMappings(response.data.mappings);
                     }
+                } else {
+                    showNotification(response.data?.message || __('Erro ao carregar metadados', 'tainacan-explorador'), 'error');
                 }
             } catch (error) {
+                console.error('Erro:', error);
                 showNotification(__('Erro ao carregar metadados', 'tainacan-explorador'), 'error');
             } finally {
                 setLoading(false);
@@ -151,8 +157,11 @@
                 if (response.success) {
                     showNotification(__('Mapeamento salvo com sucesso!', 'tainacan-explorador'), 'success');
                     loadSavedMappings();
+                } else {
+                    showNotification(response.data?.message || __('Erro ao salvar', 'tainacan-explorador'), 'error');
                 }
             } catch (error) {
+                console.error('Erro:', error);
                 showNotification(__('Erro ao salvar mapeamento', 'tainacan-explorador'), 'error');
             } finally {
                 setSaving(false);
@@ -182,27 +191,6 @@
             } finally {
                 setShowDeleteModal(false);
                 setMappingToDelete(null);
-            }
-        };
-        
-        const cloneMapping = async (mappingId) => {
-            try {
-                const response = await jQuery.ajax({
-                    url: teiAdmin.ajaxUrl,
-                    type: 'POST',
-                    data: {
-                        action: 'tei_clone_mapping',
-                        mapping_id: mappingId,
-                        nonce: teiAdmin.ajaxNonce
-                    }
-                });
-                
-                if (response.success) {
-                    showNotification(__('Mapeamento clonado com sucesso', 'tainacan-explorador'), 'success');
-                    loadSavedMappings();
-                }
-            } catch (error) {
-                showNotification(__('Erro ao clonar mapeamento', 'tainacan-explorador'), 'error');
             }
         };
         
@@ -341,80 +329,6 @@
                         max: 20,
                         value: visualizationSettings.map?.zoom || 10,
                         onChange: (value) => handleSettingChange('map', 'zoom', parseInt(value))
-                    }),
-                    
-                    el(CheckboxControl, {
-                        label: __('Agrupar marcadores próximos', 'tainacan-explorador'),
-                        checked: visualizationSettings.map?.cluster !== false,
-                        onChange: (value) => handleSettingChange('map', 'cluster', value)
-                    }),
-                    
-                    el(CheckboxControl, {
-                        label: __('Permitir tela cheia', 'tainacan-explorador'),
-                        checked: visualizationSettings.map?.fullscreen !== false,
-                        onChange: (value) => handleSettingChange('map', 'fullscreen', value)
-                    })
-                );
-            }
-            
-            if (type === 'timeline') {
-                return el(Fragment, null,
-                    el(SelectControl, {
-                        label: __('Posição da Navegação', 'tainacan-explorador'),
-                        value: visualizationSettings.timeline?.timenav_position || 'bottom',
-                        options: [
-                            { label: __('Embaixo', 'tainacan-explorador'), value: 'bottom' },
-                            { label: __('Em cima', 'tainacan-explorador'), value: 'top' }
-                        ],
-                        onChange: (value) => handleSettingChange('timeline', 'timenav_position', value)
-                    }),
-                    
-                    el(TextControl, {
-                        label: __('Zoom Inicial', 'tainacan-explorador'),
-                        type: 'number',
-                        min: 0,
-                        max: 10,
-                        value: visualizationSettings.timeline?.initial_zoom || 2,
-                        onChange: (value) => handleSettingChange('timeline', 'initial_zoom', parseInt(value))
-                    })
-                );
-            }
-            
-            if (type === 'story') {
-                return el(Fragment, null,
-                    el(SelectControl, {
-                        label: __('Tipo de Animação', 'tainacan-explorador'),
-                        value: visualizationSettings.story?.animation || 'fade',
-                        options: [
-                            { label: __('Fade', 'tainacan-explorador'), value: 'fade' },
-                            { label: __('Slide', 'tainacan-explorador'), value: 'slide' },
-                            { label: __('Zoom', 'tainacan-explorador'), value: 'zoom' }
-                        ],
-                        onChange: (value) => handleSettingChange('story', 'animation', value)
-                    }),
-                    
-                    el(SelectControl, {
-                        label: __('Navegação', 'tainacan-explorador'),
-                        value: visualizationSettings.story?.navigation || 'dots',
-                        options: [
-                            { label: __('Pontos', 'tainacan-explorador'), value: 'dots' },
-                            { label: __('Setas', 'tainacan-explorador'), value: 'arrows' },
-                            { label: __('Ambos', 'tainacan-explorador'), value: 'both' },
-                            { label: __('Nenhum', 'tainacan-explorador'), value: 'none' }
-                        ],
-                        onChange: (value) => handleSettingChange('story', 'navigation', value)
-                    }),
-                    
-                    el(CheckboxControl, {
-                        label: __('Autoplay', 'tainacan-explorador'),
-                        checked: visualizationSettings.story?.autoplay === true,
-                        onChange: (value) => handleSettingChange('story', 'autoplay', value)
-                    }),
-                    
-                    el(CheckboxControl, {
-                        label: __('Efeito Parallax', 'tainacan-explorador'),
-                        checked: visualizationSettings.story?.parallax !== false,
-                        onChange: (value) => handleSettingChange('story', 'parallax', value)
                     })
                 );
             }
@@ -448,67 +362,12 @@
                                 options: [
                                     { label: __('Selecione...', 'tainacan-explorador'), value: '' },
                                     ...collections.map(c => ({
-                                        label: `${c.name} (${c.items_count} itens)`,
+                                        label: `${c.name} (${c.items_count || 0} itens)`,
                                         value: c.id
                                     }))
                                 ],
                                 onChange: handleCollectionSelect
                             })
-                        )
-                    ),
-                    
-                    el(Card, { style: { marginTop: '20px' } },
-                        el(CardHeader, null,
-                            el('h2', null, __('Mapeamentos Salvos', 'tainacan-explorador'))
-                        ),
-                        el(CardBody, null,
-                            el(SearchControl, {
-                                label: __('Buscar mapeamentos', 'tainacan-explorador'),
-                                value: searchTerm,
-                                onChange: setSearchTerm
-                            }),
-                            
-                            el('div', { className: 'tei-filter-buttons' },
-                                ['all', 'map', 'timeline', 'story'].map(type =>
-                                    el(Button, {
-                                        key: type,
-                                        isSmall: true,
-                                        isPrimary: filterType === type,
-                                        onClick: () => setFilterType(type)
-                                    }, type === 'all' ? __('Todos', 'tainacan-explorador') : type)
-                                )
-                            ),
-                            
-                            el('div', { className: 'tei-mappings-list' },
-                                filteredMappings.length === 0 ?
-                                    el('p', null, __('Nenhum mapeamento encontrado', 'tainacan-explorador')) :
-                                    filteredMappings.map(mapping =>
-                                        el('div', { key: mapping.id, className: 'tei-mapping-item' },
-                                            el('div', { className: 'tei-mapping-info' },
-                                                el('strong', null, mapping.collection_name),
-                                                el('span', null, ` (${mapping.mapping_type})`)
-                                            ),
-                                            el('div', { className: 'tei-mapping-actions' },
-                                                el(Button, {
-                                                    isSmall: true,
-                                                    icon: 'admin-page',
-                                                    onClick: () => cloneMapping(mapping.id),
-                                                    label: __('Clonar', 'tainacan-explorador')
-                                                }),
-                                                el(Button, {
-                                                    isSmall: true,
-                                                    isDestructive: true,
-                                                    icon: 'trash',
-                                                    onClick: () => {
-                                                        setMappingToDelete(mapping.id);
-                                                        setShowDeleteModal(true);
-                                                    },
-                                                    label: __('Excluir', 'tainacan-explorador')
-                                                })
-                                            )
-                                        )
-                                    )
-                            )
                         )
                     )
                 ),
@@ -539,47 +398,23 @@
                             )
                         )
                 )
-            ),
-            
-            showDeleteModal && el(Modal, {
-                title: __('Confirmar Exclusão', 'tainacan-explorador'),
-                onRequestClose: () => setShowDeleteModal(false),
-                icon: 'warning'
-            },
-                el('p', null, __('Tem certeza que deseja excluir este mapeamento?', 'tainacan-explorador')),
-                el('div', { style: { marginTop: '20px' } },
-                    el(Button, {
-                        isDestructive: true,
-                        onClick: deleteMapping
-                    }, __('Excluir', 'tainacan-explorador')),
-                    el(Button, {
-                        isSecondary: true,
-                        onClick: () => setShowDeleteModal(false),
-                        style: { marginLeft: '10px' }
-                    }, __('Cancelar', 'tainacan-explorador'))
-                )
             )
         );
     };
     
     // Inicialização
     window.TEI_Admin = {
-        init: function(elementId) {
+        init: function(root) {
+            if (root && root.render) {
+                root.render(el(AdminPanel));
+            }
+        },
+        initLegacy: function(elementId) {
             const element = document.getElementById(elementId);
-            if (element) {
-                wp.element.render(
-                    el(AdminPanel),
-                    element
-                );
+            if (element && wp.element.render) {
+                wp.element.render(el(AdminPanel), element);
             }
         }
     };
-    
-    // Auto-inicialização
-    document.addEventListener('DOMContentLoaded', function() {
-        if (document.getElementById('tei-admin-root')) {
-            window.TEI_Admin.init('tei-admin-root');
-        }
-    });
 
-})(window.wp, window);
+})(window.wp, window, window.jQuery);
