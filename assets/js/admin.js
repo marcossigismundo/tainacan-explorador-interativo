@@ -1,5 +1,5 @@
 /**
- * Explorador Interativo - Admin Interface (CORRIGIDO)
+ * Explorador Interativo - Admin Interface com Filtros
  * 
  * @package TainacanExplorador
  * @version 1.0.0
@@ -9,7 +9,7 @@
     'use strict';
     
     const { createElement: el, Fragment, useState, useEffect, useCallback } = wp.element;
-    const { Button, Card, CardBody, CardHeader, SelectControl, TextControl, CheckboxControl, Spinner, Notice, TabPanel, Modal, SearchControl } = wp.components;
+    const { Button, Card, CardBody, CardHeader, SelectControl, TextControl, CheckboxControl, Spinner, Notice, TabPanel, Modal, SearchControl, Panel, PanelBody, PanelRow } = wp.components;
     const { __ } = wp.i18n;
     
     const AdminPanel = () => {
@@ -26,9 +26,15 @@
             timeline: {},
             story: {}
         });
+        const [filterRules, setFilterRules] = useState({
+            map: [],
+            timeline: [],
+            story: []
+        });
         const [loading, setLoading] = useState(false);
         const [saving, setSaving] = useState(false);
         const [notification, setNotification] = useState(null);
+        const [activeTab, setActiveTab] = useState('map');
         
         useEffect(() => {
             loadCollections();
@@ -76,16 +82,19 @@
                     if (response.data.mappings) {
                         const existingMappings = {};
                         const existingSettings = {};
+                        const existingFilters = {};
                         
                         ['map', 'timeline', 'story'].forEach(type => {
                             if (response.data.mappings[type]) {
                                 existingMappings[type] = response.data.mappings[type].mapping_data || {};
                                 existingSettings[type] = response.data.mappings[type].visualization_settings || {};
+                                existingFilters[type] = response.data.mappings[type].filter_rules || [];
                             }
                         });
                         
                         setMappings(existingMappings);
                         setVisualizationSettings(existingSettings);
+                        setFilterRules(existingFilters);
                     }
                 }
             } catch (error) {
@@ -124,6 +133,37 @@
             }));
         };
         
+        const handleFilterRuleChange = (visualizationType, index, field, value) => {
+            setFilterRules(prev => {
+                const newRules = [...(prev[visualizationType] || [])];
+                newRules[index] = {
+                    ...newRules[index],
+                    [field]: value
+                };
+                return {
+                    ...prev,
+                    [visualizationType]: newRules
+                };
+            });
+        };
+        
+        const addFilterRule = (visualizationType) => {
+            setFilterRules(prev => ({
+                ...prev,
+                [visualizationType]: [
+                    ...(prev[visualizationType] || []),
+                    { metadatum: '', operator: '=', value: '' }
+                ]
+            }));
+        };
+        
+        const removeFilterRule = (visualizationType, index) => {
+            setFilterRules(prev => ({
+                ...prev,
+                [visualizationType]: prev[visualizationType].filter((_, i) => i !== index)
+            }));
+        };
+        
         const saveMappings = async (mappingType) => {
             if (!selectedCollection) {
                 showNotification(__('Selecione uma coleção primeiro', 'tainacan-explorador'), 'warning');
@@ -142,6 +182,7 @@
                         mapping_type: mappingType,
                         mapping_data: mappings[mappingType] || {},
                         visualization_settings: visualizationSettings[mappingType] || {},
+                        filter_rules: filterRules[mappingType] || [],
                         nonce: teiAdmin.ajaxNonce
                     }
                 });
@@ -209,27 +250,99 @@
             return fields[type] || [];
         };
         
+        const FilterRuleComponent = ({ rule, index, visualizationType }) => {
+            return el('div', { 
+                className: 'tei-filter-rule',
+                style: { 
+                    display: 'flex',
+                    gap: '10px',
+                    marginBottom: '10px',
+                    padding: '10px',
+                    background: '#f5f5f5',
+                    borderRadius: '4px'
+                }
+            },
+                el(SelectControl, {
+                    value: rule.metadatum || '',
+                    options: [
+                        { label: __('Selecione metadado...', 'tainacan-explorador'), value: '' },
+                        ...metadata.map(m => ({ 
+                            label: `${m.name} (${m.type})`, 
+                            value: m.id.toString()
+                        }))
+                    ],
+                    onChange: (value) => handleFilterRuleChange(visualizationType, index, 'metadatum', value),
+                    style: { flex: 2 }
+                }),
+                el(SelectControl, {
+                    value: rule.operator || '=',
+                    options: [
+                        { value: '=', label: 'Igual a' },
+                        { value: '!=', label: 'Diferente de' },
+                        { value: 'IN', label: 'Contém' },
+                        { value: 'NOT IN', label: 'Não contém' },
+                        { value: 'LIKE', label: 'Contém texto' }
+                    ],
+                    onChange: (value) => handleFilterRuleChange(visualizationType, index, 'operator', value),
+                    style: { flex: 1 }
+                }),
+                el(TextControl, {
+                    value: rule.value || '',
+                    placeholder: __('Valor', 'tainacan-explorador'),
+                    onChange: (value) => handleFilterRuleChange(visualizationType, index, 'value', value),
+                    style: { flex: 2 }
+                }),
+                el(Button, {
+                    isDestructive: true,
+                    isSmall: true,
+                    onClick: () => removeFilterRule(visualizationType, index)
+                }, __('Remover', 'tainacan-explorador'))
+            );
+        };
+        
         const renderMappingForm = (type) => {
             const fields = getFieldsForType(type);
+            const rules = filterRules[type] || [];
             
             return el('div', { className: 'tei-mapping-form' },
-                el('div', { className: 'tei-form-grid' },
-                    fields.map(field => 
-                        el('div', { key: field.key, className: 'tei-form-group' },
-                            el(SelectControl, {
-                                label: field.label + (field.required ? ' *' : ''),
-                                value: mappings[type]?.[field.key] || '',
-                                options: [
-                                    { label: __('Selecione...', 'tainacan-explorador'), value: '' },
-                                    ...metadata.map(m => ({
-                                        label: `${m.name} (${m.type})`,
-                                        value: m.id
-                                    }))
-                                ],
-                                onChange: (value) => handleMappingChange(type, field.key, value)
-                            })
+                el(PanelBody, { title: __('Mapeamento de Campos', 'tainacan-explorador'), initialOpen: true },
+                    el('div', { className: 'tei-form-grid' },
+                        fields.map(field => 
+                            el('div', { key: field.key, className: 'tei-form-group' },
+                                el(SelectControl, {
+                                    label: field.label + (field.required ? ' *' : ''),
+                                    value: mappings[type]?.[field.key] || '',
+                                    options: [
+                                        { label: __('Selecione...', 'tainacan-explorador'), value: '' },
+                                        ...metadata.map(m => ({
+                                            label: `${m.name} (${m.type})`,
+                                            value: m.id
+                                        }))
+                                    ],
+                                    onChange: (value) => handleMappingChange(type, field.key, value)
+                                })
+                            )
                         )
                     )
+                ),
+                
+                el(PanelBody, { title: __('Filtros de Exibição', 'tainacan-explorador'), initialOpen: false },
+                    el('p', { style: { marginBottom: '15px' } }, 
+                        __('Configure filtros para limitar quais itens serão exibidos', 'tainacan-explorador')
+                    ),
+                    rules.map((rule, index) => 
+                        el(FilterRuleComponent, {
+                            key: index,
+                            rule: rule,
+                            index: index,
+                            visualizationType: type
+                        })
+                    ),
+                    el(Button, {
+                        isSecondary: true,
+                        onClick: () => addFilterRule(type),
+                        style: { marginTop: '10px' }
+                    }, __('Adicionar Filtro', 'tainacan-explorador'))
                 ),
                 
                 el('div', { className: 'tei-form-actions', style: { marginTop: '20px' } },
@@ -311,6 +424,7 @@
                             className: 'tei-tabs',
                             activeClass: 'is-active',
                             tabs: tabs,
+                            onSelect: (tab) => setActiveTab(tab.name),
                             children: (tab) => renderMappingForm(tab.name)
                         })
                     )
