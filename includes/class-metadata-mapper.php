@@ -33,6 +33,7 @@ class TEI_Metadata_Mapper {
             mapping_type varchar(50) NOT NULL,
             mapping_data longtext NOT NULL,
             visualization_settings longtext,
+            filter_rules longtext,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             created_by bigint(20) NOT NULL,
@@ -85,6 +86,7 @@ class TEI_Metadata_Mapper {
         $collection_name = sanitize_text_field($data['collection_name'] ?? '');
         $mapping_data = wp_json_encode($data['mapping_data'] ?? []);
         $visualization_settings = wp_json_encode($data['visualization_settings'] ?? []);
+        $filter_rules = wp_json_encode($data['filter_rules'] ?? []);
         $created_by = get_current_user_id();
         
         $table_name = $wpdb->prefix . self::$table_name;
@@ -104,12 +106,13 @@ class TEI_Metadata_Mapper {
                     'collection_name' => $collection_name,
                     'mapping_data' => $mapping_data,
                     'visualization_settings' => $visualization_settings,
+                    'filter_rules' => $filter_rules,
                     'updated_at' => current_time('mysql')
                 ],
                 [
                     'id' => $existing->id
                 ],
-                ['%s', '%s', '%s', '%s'],
+                ['%s', '%s', '%s', '%s', '%s'],
                 ['%d']
             );
             
@@ -132,11 +135,12 @@ class TEI_Metadata_Mapper {
                     'mapping_type' => $mapping_type,
                     'mapping_data' => $mapping_data,
                     'visualization_settings' => $visualization_settings,
+                    'filter_rules' => $filter_rules,
                     'created_by' => $created_by,
                     'created_at' => current_time('mysql'),
                     'updated_at' => current_time('mysql')
                 ],
-                ['%d', '%s', '%s', '%s', '%s', '%d', '%s', '%s']
+                ['%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s']
             );
             
             if ($result) {
@@ -194,6 +198,7 @@ class TEI_Metadata_Mapper {
             // Decodifica JSON
             $result['mapping_data'] = json_decode($result['mapping_data'], true);
             $result['visualization_settings'] = json_decode($result['visualization_settings'], true);
+            $result['filter_rules'] = json_decode($result['filter_rules'], true);
             
             // Adiciona metadados adicionais
             $result['author'] = get_userdata($result['created_by']);
@@ -255,6 +260,7 @@ class TEI_Metadata_Mapper {
         foreach ($results as &$result) {
             $result['mapping_data'] = json_decode($result['mapping_data'], true);
             $result['visualization_settings'] = json_decode($result['visualization_settings'], true);
+            $result['filter_rules'] = json_decode($result['filter_rules'], true);
         }
         
         return $results;
@@ -301,6 +307,51 @@ class TEI_Metadata_Mapper {
         }
         
         return false;
+    }
+    
+    /**
+     * Aplica filtros configurados aos parâmetros da API
+     * 
+     * @param array $api_params Parâmetros existentes
+     * @param array $filter_rules Regras de filtro
+     * @return array Parâmetros modificados
+     */
+    public static function apply_filter_rules($api_params, $filter_rules) {
+        if (empty($filter_rules) || !is_array($filter_rules)) {
+            return $api_params;
+        }
+        
+        $metaquery = isset($api_params['metaquery']) ? $api_params['metaquery'] : [];
+        
+        foreach ($filter_rules as $rule) {
+            if (!empty($rule['metadatum']) && !empty($rule['value'])) {
+                $query_item = [
+                    'key' => $rule['metadatum'],
+                    'value' => $rule['value'],
+                    'compare' => $rule['operator'] ?? '='
+                ];
+                
+                // Se o operador for IN ou NOT IN, converte valor para array
+                if (in_array($rule['operator'], ['IN', 'NOT IN'])) {
+                    $query_item['value'] = array_map('trim', explode(',', $rule['value']));
+                }
+                
+                $metaquery[] = $query_item;
+            }
+        }
+        
+        if (!empty($metaquery)) {
+            if (count($metaquery) > 1) {
+                $api_params['metaquery'] = [
+                    'relation' => 'AND',
+                    $metaquery
+                ];
+            } else {
+                $api_params['metaquery'] = $metaquery;
+            }
+        }
+        
+        return $api_params;
     }
     
     /**
