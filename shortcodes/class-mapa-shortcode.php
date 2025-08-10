@@ -399,7 +399,7 @@ class TEI_Mapa_Shortcode {
         ob_start();
         ?>
         <div class="tei-map-container <?php echo esc_attr($atts['class']); ?>" 
-             style="height: <?php echo esc_attr($atts['height']); ?>; width: <?php echo esc_attr($atts['width']); ?>;">
+     style="width: 100vw; height: 100vh; position: relative; margin: 0;">
             
             <div id="<?php echo esc_attr($map_id); ?>" 
                  class="tei-map" 
