@@ -412,8 +412,7 @@ class TEI_Timeline_Shortcode {
     private function render_timeline($timeline_id, $timeline_data, $config, $atts) {
         ob_start();
         ?>
-        <div class="tei-timeline-container <?php echo esc_attr($atts['class']); ?>" style="width: 100vw; height: 100vh; position: relative; left: 50%; right: 50%; margin-left: -50vw; margin-right: -50vw;">
-            <div id="<?php echo esc_attr($timeline_id); ?>" 
+<div class="tei-timeline-container <?php echo esc_attr($atts['class']); ?>" style="width: 100vw; height: 100vh; position: relative; margin: 0;">            <div id="<?php echo esc_attr($timeline_id); ?>" 
                  class="tei-timeline" 
                  style="height: 100%; width: 100%;">
             </div>
