@@ -200,6 +200,9 @@ class TainacanExploradorInterativo {
         add_action('wp_ajax_tei_get_all_mappings', [$this->ajax_handler, 'get_all_mappings']);
         add_action('wp_ajax_tei_clear_collection_cache', [$this->ajax_handler, 'clear_collection_cache']);
         
+        // Permite acesso público para visualização
+        add_action('wp_ajax_nopriv_tei_get_collections', [$this->ajax_handler, 'get_collections']);
+        
         // Handler para limpeza de cache geral
         add_action('admin_post_tei_clear_cache', [$this, 'handle_clear_cache']);
     }
