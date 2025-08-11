@@ -65,7 +65,7 @@ class TEI_Timeline_Shortcode {
     private function get_timeline_data($collection_id, $mapping, $atts) {
         // Verifica cache
         if ($atts['cache']) {
-            $cache_key = 'tei_timeline_data_' . $collection_id . '_' . md5(serialize($atts));
+            $cache_key = 'tei_timeline_data_' . $collection_id . '_' . md5(serialize($atts) . serialize($mapping['filter_rules'] ?? []));
             $cached_data = TEI_Cache_Manager::get($cache_key);
             
             if ($cached_data !== false) {
@@ -76,17 +76,25 @@ class TEI_Timeline_Shortcode {
         // Prepara parâmetros da API
         $api_params = [
             'perpage' => 200,
-            'paged' => 1
+            'paged' => 1,
+            'fetch_only' => 'title,description,thumbnail,document,_attachments'
         ];
         
+        // Aplica filtros configurados
+        if (!empty($mapping['filter_rules'])) {
+            $api_params = TEI_Metadata_Mapper::apply_filter_rules($api_params, $mapping['filter_rules']);
+        }
+        
         // Adiciona filtro de data se especificado
+        $existing_metaquery = isset($api_params['metaquery']) && isset($api_params['metaquery']['relation']) 
+            ? $api_params['metaquery'] 
+            : (isset($api_params['metaquery']) ? ['relation' => 'AND', $api_params['metaquery']] : ['relation' => 'AND']);
+        
         if (!empty($atts['start_date']) || !empty($atts['end_date'])) {
             $date_field = $mapping['mapping_data']['date'] ?? '';
             if ($date_field) {
-                $api_params['metaquery'] = [];
-                
                 if (!empty($atts['start_date'])) {
-                    $api_params['metaquery'][] = [
+                    $existing_metaquery[] = [
                         'key' => $date_field,
                         'value' => TEI_Sanitizer::sanitize($atts['start_date'], 'date'),
                         'compare' => '>=',
@@ -95,7 +103,7 @@ class TEI_Timeline_Shortcode {
                 }
                 
                 if (!empty($atts['end_date'])) {
-                    $api_params['metaquery'][] = [
+                    $existing_metaquery[] = [
                         'key' => $date_field,
                         'value' => TEI_Sanitizer::sanitize($atts['end_date'], 'date'),
                         'compare' => '<=',
@@ -103,6 +111,11 @@ class TEI_Timeline_Shortcode {
                     ];
                 }
             }
+        }
+        
+        // Atualiza metaquery se houver filtros
+        if (count($existing_metaquery) > 1) {
+            $api_params['metaquery'] = $existing_metaquery;
         }
         
         // Faz requisição à API REST do Tainacan
@@ -201,12 +214,12 @@ class TEI_Timeline_Shortcode {
                 ]
             ];
             
-            // Adiciona mídia se disponível
+            // Obtém imagem em alta resolução
             $image_url = $this->get_image_url($item, $image_field);
             if ($image_url) {
                 $event['media'] = [
                     'url' => $image_url,
-                    'thumbnail' => $item['thumbnail'] ?? '',
+                    'thumbnail' => $this->get_thumbnail_url($item),
                     'caption' => TEI_Sanitizer::escape($this->get_field_value($item, $title_field, $item['title']), 'html')
                 ];
             }
@@ -346,13 +359,20 @@ class TEI_Timeline_Shortcode {
     }
     
     /**
-     * Obtém URL da imagem
+     * Obtém URL da imagem em alta resolução
      */
     private function get_image_url($item, $image_field) {
+        // Se houver campo de imagem especificado
         if (!empty($image_field)) {
             $image_value = $this->get_field_value($item, $image_field);
             if (!empty($image_value)) {
                 if (is_numeric($image_value)) {
+                    // Tenta obter imagem em tamanho full primeiro
+                    $image_url = wp_get_attachment_image_url($image_value, 'full');
+                    if ($image_url) {
+                        return $image_url;
+                    }
+                    // Fallback para large
                     $image_url = wp_get_attachment_image_url($image_value, 'large');
                     if ($image_url) {
                         return $image_url;
@@ -363,14 +383,65 @@ class TEI_Timeline_Shortcode {
             }
         }
         
-        if (isset($item['thumbnail']['tainacan-medium'][0])) {
-            return $item['thumbnail']['tainacan-medium'][0];
+        // Busca anexos do item
+        if (isset($item['_attachments']) && is_array($item['_attachments'])) {
+            foreach ($item['_attachments'] as $attachment) {
+                // Pega o primeiro anexo de imagem
+                if (isset($attachment['mime_type']) && strpos($attachment['mime_type'], 'image') === 0) {
+                    if (isset($attachment['url'])) {
+                        return $attachment['url'];
+                    }
+                }
+            }
         }
         
-        if (isset($item['thumbnail']['medium'])) {
-            return $item['thumbnail']['medium'];
+        // Tenta pegar do document se disponível
+        if (isset($item['document']) && !empty($item['document'])) {
+            if (filter_var($item['document'], FILTER_VALIDATE_URL)) {
+                return $item['document'];
+            } elseif (is_numeric($item['document'])) {
+                $doc_url = wp_get_attachment_url($item['document']);
+                if ($doc_url) {
+                    return $doc_url;
+                }
+            }
         }
         
+        // Fallback para thumbnail em alta resolução
+        if (isset($item['thumbnail'])) {
+            // Tenta pegar o maior tamanho disponível
+            $sizes = ['full', 'tainacan-large', 'large', 'tainacan-medium-full', 'medium_large', 'medium'];
+            foreach ($sizes as $size) {
+                if (isset($item['thumbnail'][$size])) {
+                    if (is_array($item['thumbnail'][$size]) && isset($item['thumbnail'][$size][0])) {
+                        return $item['thumbnail'][$size][0];
+                    } elseif (is_string($item['thumbnail'][$size])) {
+                        return $item['thumbnail'][$size];
+                    }
+                }
+            }
+        }
+        
+        return '';
+    }
+    
+    /**
+     * Obtém URL do thumbnail (para preview)
+     */
+    private function get_thumbnail_url($item) {
+        if (isset($item['thumbnail'])) {
+            // Pega thumbnail pequeno para preview
+            $sizes = ['thumbnail', 'tainacan-small', 'medium'];
+            foreach ($sizes as $size) {
+                if (isset($item['thumbnail'][$size])) {
+                    if (is_array($item['thumbnail'][$size]) && isset($item['thumbnail'][$size][0])) {
+                        return $item['thumbnail'][$size][0];
+                    } elseif (is_string($item['thumbnail'][$size])) {
+                        return $item['thumbnail'][$size];
+                    }
+                }
+            }
+        }
         return '';
     }
     
@@ -412,7 +483,8 @@ class TEI_Timeline_Shortcode {
     private function render_timeline($timeline_id, $timeline_data, $config, $atts) {
         ob_start();
         ?>
-<div class="tei-timeline-container <?php echo esc_attr($atts['class']); ?>" style="width: 100vw; height: 100vh; position: relative; margin: 0;">            <div id="<?php echo esc_attr($timeline_id); ?>" 
+        <div class="tei-timeline-container <?php echo esc_attr($atts['class']); ?>" style="width: 100vw; height: 100vh; position: relative; margin: 0;">
+            <div id="<?php echo esc_attr($timeline_id); ?>" 
                  class="tei-timeline" 
                  style="height: 100%; width: 100%;">
             </div>
@@ -467,6 +539,10 @@ class TEI_Timeline_Shortcode {
         </div>
         
         <style>
+        .tei-timeline-container {
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+        }
         @media (max-width: 100%) {
             .tei-timeline-container {
                 width: 100vw !important;
