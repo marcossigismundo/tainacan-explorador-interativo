@@ -121,92 +121,111 @@ private function get_timeline_data($collection_id, $mapping, $atts) {
     return $timeline_data;
 }
     
-    /**
-     * Processa dados para o formato TimelineJS
-     */
-    private function process_timeline_data($response, $mapping) {
-        $timeline_data = [
-            'title' => [
-                'text' => [
-                    'headline' => $mapping['collection_name'] ?? __('Timeline', 'tainacan-explorador'),
-                    'text' => $mapping['visualization_settings']['description'] ?? ''
-                ]
-            ],
-            'events' => []
-        ];
+/**
+ * Processa dados para o formato TimelineJS
+ */
+private function process_timeline_data($response, $mapping) {
+    error_log('TEI Timeline - Starting to process data');
+    error_log('TEI Timeline - Mapping data: ' . json_encode($mapping['mapping_data']));
+    
+    $timeline_data = [
+        'title' => [
+            'text' => [
+                'headline' => $mapping['collection_name'] ?? __('Timeline', 'tainacan-explorador'),
+                'text' => $mapping['visualization_settings']['description'] ?? ''
+            ]
+        ],
+        'events' => []
+    ];
+    
+    $date_field = $mapping['mapping_data']['date'] ?? '';
+    $title_field = $mapping['mapping_data']['title'] ?? '';
+    $description_field = $mapping['mapping_data']['description'] ?? '';
+    $image_field = $mapping['mapping_data']['image'] ?? '';
+    $category_field = $mapping['mapping_data']['category'] ?? '';
+    $link_field = $mapping['mapping_data']['link'] ?? '';
+    
+    error_log('TEI Timeline - Field mappings: date=' . $date_field . ', title=' . $title_field);
+    
+    foreach ($response['items'] as $index => $item) {
+        error_log('TEI Timeline - Processing item ' . $index . ' (ID: ' . $item['id'] . ')');
         
-        $date_field = $mapping['mapping_data']['date'] ?? '';
-        $title_field = $mapping['mapping_data']['title'] ?? '';
-        $description_field = $mapping['mapping_data']['description'] ?? '';
-        $image_field = $mapping['mapping_data']['image'] ?? '';
-        $category_field = $mapping['mapping_data']['category'] ?? '';
-        $link_field = $mapping['mapping_data']['link'] ?? '';
+        // Obtém data
+        $date_value = $this->get_field_value($item, $date_field);
+        error_log('TEI Timeline - Date value for item ' . $item['id'] . ': ' . $date_value);
         
-        foreach ($response['items'] as $item) {
-            // Obtém data
-            $date_value = $this->get_field_value($item, $date_field);
-            
-            if (empty($date_value)) {
-                continue;
-            }
-            
-            // Parse da data
-            $date_parts = $this->parse_date($date_value);
-            
-            if (!$date_parts) {
-                continue;
-            }
-            
-            // Cria evento
-            $event = [
-                'start_date' => $date_parts,
-                'text' => [
-                    'headline' => TEI_Sanitizer::escape($this->get_field_value($item, $title_field, $item['title']), 'html'),
-                    'text' => $this->format_description($item, $description_field, $category_field, $link_field)
-                ]
-            ];
-            
-            // Obtém imagem
-            $image_url = $this->get_image_url($item, $image_field);
-            if ($image_url) {
-                $event['media'] = [
-                    'url' => $image_url,
-                    'thumbnail' => $this->get_thumbnail_url($item),
-                    'caption' => TEI_Sanitizer::escape($this->get_field_value($item, $title_field, $item['title']), 'html')
-                ];
-            }
-            
-            // Adiciona grupo/categoria se disponível
-            if ($category_field) {
-                $category = $this->get_field_value($item, $category_field);
-                if ($category) {
-                    $event['group'] = TEI_Sanitizer::sanitize($category, 'text');
-                }
-            }
-            
-            // Adiciona tipo de evento
-            $event['unique_id'] = 'event-' . $item['id'];
-            
-            $timeline_data['events'][] = $event;
+        if (empty($date_value)) {
+            error_log('TEI Timeline - Skipping item ' . $item['id'] . ' - no date value');
+            continue;
         }
         
-        // Ordena eventos por data
-        usort($timeline_data['events'], function($a, $b) {
-            $date_a = sprintf('%04d%02d%02d', 
-                $a['start_date']['year'], 
-                $a['start_date']['month'] ?? 1, 
-                $a['start_date']['day'] ?? 1
-            );
-            $date_b = sprintf('%04d%02d%02d', 
-                $b['start_date']['year'], 
-                $b['start_date']['month'] ?? 1, 
-                $b['start_date']['day'] ?? 1
-            );
-            return strcmp($date_a, $date_b);
-        });
+        // Parse da data
+        $date_parts = $this->parse_date($date_value);
         
-        return $timeline_data;
+        if (!$date_parts) {
+            error_log('TEI Timeline - Skipping item ' . $item['id'] . ' - could not parse date: ' . $date_value);
+            continue;
+        }
+        
+        error_log('TEI Timeline - Date parsed successfully: ' . json_encode($date_parts));
+        
+        // Obtém título
+        $title = $this->get_field_value($item, $title_field, $item['title']);
+        error_log('TEI Timeline - Title: ' . $title);
+        
+        // Cria evento
+        $event = [
+            'start_date' => $date_parts,
+            'text' => [
+                'headline' => TEI_Sanitizer::escape($title, 'html'),
+                'text' => $this->format_description($item, $description_field, $category_field, $link_field)
+            ]
+        ];
+        
+        // Obtém imagem
+        $image_url = $this->get_image_url($item, $image_field);
+        if ($image_url) {
+            $event['media'] = [
+                'url' => $image_url,
+                'thumbnail' => $this->get_thumbnail_url($item),
+                'caption' => TEI_Sanitizer::escape($title, 'html')
+            ];
+        }
+        
+        // Adiciona grupo/categoria se disponível
+        if ($category_field) {
+            $category = $this->get_field_value($item, $category_field);
+            if ($category) {
+                $event['group'] = TEI_Sanitizer::sanitize($category, 'text');
+            }
+        }
+        
+        // Adiciona tipo de evento
+        $event['unique_id'] = 'event-' . $item['id'];
+        
+        $timeline_data['events'][] = $event;
+        error_log('TEI Timeline - Event added for item ' . $item['id']);
     }
+    
+    error_log('TEI Timeline - Total events created: ' . count($timeline_data['events']));
+    
+    // Ordena eventos por data
+    usort($timeline_data['events'], function($a, $b) {
+        $date_a = sprintf('%04d%02d%02d', 
+            $a['start_date']['year'], 
+            $a['start_date']['month'] ?? 1, 
+            $a['start_date']['day'] ?? 1
+        );
+        $date_b = sprintf('%04d%02d%02d', 
+            $b['start_date']['year'], 
+            $b['start_date']['month'] ?? 1, 
+            $b['start_date']['day'] ?? 1
+        );
+        return strcmp($date_a, $date_b);
+    });
+    
+    return $timeline_data;
+}
     
     /**
      * Parse de data
