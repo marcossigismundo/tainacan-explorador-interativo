@@ -90,10 +90,10 @@ class TainacanExploradorInterativo {
         if (is_admin()) {
             add_action('admin_menu', [$this, 'add_admin_menu']);
             add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
+            
+            // AJAX handlers
+            $this->register_ajax_handlers();
         }
-        
-        // AJAX handlers
-        $this->register_ajax_handlers();
         
         // Frontend
         add_action('wp_enqueue_scripts', [$this, 'conditionally_enqueue_assets']);
