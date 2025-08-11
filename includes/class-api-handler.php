@@ -190,106 +190,93 @@ public function get_collection_items($collection_id, $params = []) {
     }
     
     /**
-     * Normaliza estrutura do item do Tainacan
-     * 
-     * @param array $item Item bruto da API
-     * @param int $collection_id ID da coleção
-     * @return array
-     */
-    private function normalize_item($item, $collection_id) {
-        $normalized = [
-            'id' => $item['id'] ?? 0,
-            'title' => '',
-            'description' => '',
-            'url' => '',
-            'thumbnail' => [],
-            'document' => '',
-            '_attachments' => [],
-            'metadata' => []
-        ];
-        
-        // Título
-        if (isset($item['title'])) {
-            if (is_array($item['title'])) {
-                $normalized['title'] = $item['title']['rendered'] ?? $item['title']['value'] ?? '';
-            } else {
-                $normalized['title'] = $item['title'];
-            }
-        }
-        
-        // Descrição
-        if (isset($item['description'])) {
-            if (is_array($item['description'])) {
-                $normalized['description'] = $item['description']['rendered'] ?? $item['description']['value'] ?? '';
-            } else {
-                $normalized['description'] = $item['description'];
-            }
-        }
-        
-        // URL do item
-        if (isset($item['url'])) {
-            $normalized['url'] = $item['url'];
-        } elseif (isset($item['link'])) {
-            $normalized['url'] = $item['link'];
+ * Normaliza estrutura do item do Tainacan
+ * 
+ * @param array $item Item bruto da API
+ * @param int $collection_id ID da coleção
+ * @return array
+ */
+private function normalize_item($item, $collection_id) {
+    $normalized = [
+        'id' => $item['id'] ?? 0,
+        'title' => '',
+        'description' => '',
+        'url' => '',
+        'thumbnail' => [],
+        'document' => '',
+        '_attachments' => [],
+        'metadata' => []
+    ];
+    
+    // Título
+    if (isset($item['title'])) {
+        if (is_array($item['title'])) {
+            $normalized['title'] = $item['title']['rendered'] ?? $item['title']['value'] ?? '';
         } else {
-            $normalized['url'] = get_permalink($item['id']);
+            $normalized['title'] = $item['title'];
         }
-        
-        // Thumbnail
-        if (isset($item['thumbnail'])) {
-            $normalized['thumbnail'] = $item['thumbnail'];
-        } elseif (isset($item['_thumbnail_id'])) {
-            $normalized['thumbnail'] = $this->get_thumbnail_sizes($item['_thumbnail_id']);
+    }
+    
+    // Descrição  
+    if (isset($item['description'])) {
+        if (is_array($item['description'])) {
+            $normalized['description'] = $item['description']['rendered'] ?? $item['description']['value'] ?? '';
+        } else {
+            $normalized['description'] = $item['description'];
         }
+    }
+    
+    // URL
+    if (isset($item['url'])) {
+        $normalized['url'] = $item['url'];
+    } elseif (isset($item['link'])) {
+        $normalized['url'] = $item['link'];
+    }
+    
+    // Thumbnail
+    if (isset($item['thumbnail'])) {
+        $normalized['thumbnail'] = $item['thumbnail'];
+    }
+    
+    // Document
+    if (isset($item['document'])) {
+        $normalized['document'] = $item['document'];
+    }
+    
+    // Attachments
+    if (isset($item['_attachments'])) {
+        $normalized['_attachments'] = $item['_attachments'];
+    }
+    
+    // CRÍTICO: Processa metadados corretamente
+    if (isset($item['metadata']) && is_array($item['metadata'])) {
+        error_log('TEI Debug - Processing metadata for item ' . $item['id']);
         
-        // Document
-        if (isset($item['document'])) {
-            $normalized['document'] = $item['document'];
-        }
-        
-        // Attachments
-        if (isset($item['_attachments'])) {
-            $normalized['_attachments'] = $item['_attachments'];
-        }
-        
-        // Metadados - CORREÇÃO IMPORTANTE
-        if (isset($item['metadata']) && is_array($item['metadata'])) {
-            // Verifica se é array associativo (chaves são IDs) ou array indexado
-            foreach ($item['metadata'] as $key => $meta) {
-                if (is_array($meta)) {
-                    // Extrai o ID do metadado
-                    $meta_id = null;
-                    if (isset($meta['metadatum_id'])) {
-                        $meta_id = $meta['metadatum_id'];
-                    } elseif (isset($meta['metadatum']['id'])) {
-                        $meta_id = $meta['metadatum']['id'];
-                    } elseif (is_numeric($key)) {
-                        $meta_id = $key;
-                    }
+        foreach ($item['metadata'] as $meta) {
+            if (is_array($meta) && isset($meta['metadatum'])) {
+                $meta_id = $meta['metadatum']['id'] ?? null;
+                
+                if ($meta_id) {
+                    $normalized['metadata'][$meta_id] = [
+                        'id' => $meta_id,
+                        'name' => $meta['metadatum']['name'] ?? '',
+                        'value' => $meta['value'] ?? '',
+                        'value_as_html' => $meta['value_as_html'] ?? '',
+                        'value_as_string' => $meta['value_as_string'] ?? ''
+                    ];
                     
-                    if ($meta_id) {
-                        $normalized['metadata'][$meta_id] = [
-                            'id' => $meta_id,
-                            'name' => $meta['metadatum']['name'] ?? $meta['name'] ?? '',
-                            'value' => $meta['value'] ?? '',
-                            'value_as_html' => $meta['value_as_html'] ?? '',
-                            'value_as_string' => $meta['value_as_string'] ?? ''
-                        ];
-                    }
-                } else {
-                    // Valor simples
-                    if (is_numeric($key)) {
-                        $normalized['metadata'][$key] = [
-                            'id' => $key,
-                            'value' => $meta
-                        ];
-                    }
+                    error_log('TEI Debug - Added metadata: ' . $meta_id . ' = ' . json_encode($meta['value'] ?? ''));
                 }
             }
         }
         
-        return $normalized;
+        error_log('TEI Debug - Total metadata processed: ' . count($normalized['metadata']));
+    } else {
+        error_log('TEI Debug - No metadata array found for item ' . $item['id']);
     }
+    
+    return $normalized;
+}
     
     /**
      * Obtém tamanhos de thumbnail
