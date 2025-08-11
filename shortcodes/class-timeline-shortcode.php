@@ -59,99 +59,83 @@ class TEI_Timeline_Shortcode {
         return $this->render_timeline($atts['id'], $timeline_data, $timeline_config, $atts);
     }
     
-    /**
-     * Obtém dados da timeline
-     */
-    private function get_timeline_data($collection_id, $mapping, $atts) {
-        // Verifica cache
-        if ($atts['cache']) {
-            $cache_key = 'tei_timeline_data_' . $collection_id . '_' . md5(serialize($atts) . serialize($mapping['filter_rules'] ?? []));
-            $cached_data = TEI_Cache_Manager::get($cache_key);
-            
-            if ($cached_data !== false) {
-                return $cached_data;
-            }
+/**
+ * Obtém dados da timeline
+ */
+private function get_timeline_data($collection_id, $mapping, $atts) {
+    // Verifica cache
+    if ($atts['cache']) {
+        $cache_key = 'tei_timeline_data_' . $collection_id . '_' . md5(serialize($atts) . serialize($mapping['filter_rules'] ?? []));
+        $cached_data = TEI_Cache_Manager::get($cache_key);
+        
+        if ($cached_data !== false) {
+            return $cached_data;
         }
-        
-        // Prepara parâmetros da API
-        $api_params = [
-            'perpage' => 200,
-            'paged' => 1,
-            'fetch_only' => 'title,description,thumbnail,document,_attachments'
-        ];
-        
-        // Aplica filtros configurados
-        if (!empty($mapping['filter_rules'])) {
-            $api_params = TEI_Metadata_Mapper::apply_filter_rules($api_params, $mapping['filter_rules']);
-        }
-        
-        // Adiciona filtro de data se especificado
-        $existing_metaquery = isset($api_params['metaquery']) && isset($api_params['metaquery']['relation']) 
-            ? $api_params['metaquery'] 
-            : (isset($api_params['metaquery']) ? ['relation' => 'AND', $api_params['metaquery']] : ['relation' => 'AND']);
-        
-        if (!empty($atts['start_date']) || !empty($atts['end_date'])) {
-            $date_field = $mapping['mapping_data']['date'] ?? '';
-            if ($date_field) {
-                if (!empty($atts['start_date'])) {
-                    $existing_metaquery[] = [
-                        'key' => $date_field,
-                        'value' => TEI_Sanitizer::sanitize($atts['start_date'], 'date'),
-                        'compare' => '>=',
-                        'type' => 'DATE'
-                    ];
-                }
-                
-                if (!empty($atts['end_date'])) {
-                    $existing_metaquery[] = [
-                        'key' => $date_field,
-                        'value' => TEI_Sanitizer::sanitize($atts['end_date'], 'date'),
-                        'compare' => '<=',
-                        'type' => 'DATE'
-                    ];
-                }
-            }
-        }
-        
-        // Atualiza metaquery se houver filtros
-        if (count($existing_metaquery) > 1) {
-            $api_params['metaquery'] = $existing_metaquery;
-        }
-        
-        // Faz requisição à API REST do Tainacan
-        $endpoint = rest_url("tainacan/v2/collection/{$collection_id}/items");
-        $url = add_query_arg($api_params, $endpoint);
-        
-        $api_response = wp_remote_get($url, [
-            'timeout' => 30,
-            'headers' => [
-                'Content-Type' => 'application/json'
-            ]
-        ]);
-        
-        if (is_wp_error($api_response)) {
-            return $api_response;
-        }
-        
-        $body = wp_remote_retrieve_body($api_response);
-        $data = json_decode($body, true);
-        
-        if (!is_array($data) || !isset($data['items'])) {
-            return new WP_Error('no_data', __('Nenhum dado encontrado', 'tainacan-explorador'));
-        }
-        
-        $response = ['items' => $data['items']];
-        
-        // Processa dados para o formato da timeline
-        $timeline_data = $this->process_timeline_data($response, $mapping);
-        
-        // Salva no cache
-        if ($atts['cache'] && !empty($timeline_data)) {
-            TEI_Cache_Manager::set($cache_key, $timeline_data, HOUR_IN_SECONDS);
-        }
-        
-        return $timeline_data;
     }
+    
+    // Prepara parâmetros da API
+    $api_params = [
+        'perpage' => 200,
+        'paged' => 1
+    ];
+    
+    // Aplica filtros configurados
+    if (!empty($mapping['filter_rules'])) {
+        $api_params = TEI_Metadata_Mapper::apply_filter_rules($api_params, $mapping['filter_rules']);
+    }
+    
+    // Adiciona filtro de data se especificado
+    if (!empty($atts['start_date']) || !empty($atts['end_date'])) {
+        $date_field = $mapping['mapping_data']['date'] ?? '';
+        if ($date_field && is_numeric($date_field)) {
+            $metaquery = isset($api_params['metaquery']) ? $api_params['metaquery'] : [];
+            
+            if (!empty($atts['start_date'])) {
+                $metaquery[] = [
+                    'key' => $date_field,
+                    'value' => TEI_Sanitizer::sanitize($atts['start_date'], 'date'),
+                    'compare' => '>=',
+                    'type' => 'DATE'
+                ];
+            }
+            
+            if (!empty($atts['end_date'])) {
+                $metaquery[] = [
+                    'key' => $date_field,
+                    'value' => TEI_Sanitizer::sanitize($atts['end_date'], 'date'),
+                    'compare' => '<=',
+                    'type' => 'DATE'
+                ];
+            }
+            
+            if (!empty($metaquery)) {
+                $api_params['metaquery'] = $metaquery;
+            }
+        }
+    }
+    
+    // Usa API Handler para buscar itens
+    $api_handler = new TEI_API_Handler();
+    $response = $api_handler->get_collection_items($collection_id, $api_params);
+    
+    if (is_wp_error($response)) {
+        error_log('TEI Error getting timeline data: ' . $response->get_error_message());
+        return $response;
+    }
+    
+    // Debug
+    error_log('TEI Debug - Timeline items fetched: ' . count($response['items'] ?? []));
+    
+    // Processa dados para o formato da timeline
+    $timeline_data = $this->process_timeline_data($response, $mapping);
+    
+    // Salva no cache
+    if ($atts['cache'] && !empty($timeline_data['events'])) {
+        TEI_Cache_Manager::set($cache_key, $timeline_data, HOUR_IN_SECONDS);
+    }
+    
+    return $timeline_data;
+}
     
     /**
      * Processa dados para o formato TimelineJS
