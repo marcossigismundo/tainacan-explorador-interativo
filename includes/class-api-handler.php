@@ -1,6 +1,6 @@
 <?php
 /**
- * Handler para comunicação com API do Tainacan
+ * Shortcode para visualização de Timeline
  * 
  * @package TainacanExplorador
  * @since 1.0.0
@@ -10,554 +10,622 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-class TEI_API_Handler {
+class TEI_Timeline_Shortcode {
     
     /**
-     * Base URL da API do Tainacan
+     * Renderiza o shortcode da timeline
      */
-    private $api_base;
+    public function render($atts) {
+        // Parse dos atributos
+        $atts = TEI_Sanitizer::sanitize_shortcode_atts($atts, [
+            'collection' => '',
+            'height' => '650px',
+            'width' => '100%',
+            'start_date' => '',
+            'end_date' => '',
+            'initial_zoom' => 2,
+            'language' => get_locale(),
+            'timenav_position' => 'bottom',
+            'hash_bookmark' => false,
+            'debug' => false,
+            'cache' => true,
+            'class' => '',
+            'id' => 'tei-timeline-' . uniqid()
+        ]);
+        
+        // Validação da coleção
+        if (empty($atts['collection'])) {
+            return $this->render_error(__('ID da coleção não especificado.', 'tainacan-explorador'));
+        }
+        
+        // Obtém mapeamento
+        $mapping = TEI_Metadata_Mapper::get_mapping($atts['collection'], 'timeline');
+        
+        if (!$mapping) {
+            return $this->render_error(__('Mapeamento de timeline não configurado para esta coleção.', 'tainacan-explorador'));
+        }
+        
+        // Obtém dados da coleção
+        $timeline_data = $this->get_timeline_data($atts['collection'], $mapping, $atts);
+        
+        if (is_wp_error($timeline_data)) {
+            return $this->render_error($timeline_data->get_error_message());
+        }
+        
+        // Gera configurações da timeline
+        $timeline_config = $this->get_timeline_config($atts, $mapping);
+        
+        // Renderiza a timeline
+        return $this->render_timeline($atts['id'], $timeline_data, $timeline_config, $atts);
+    }
     
     /**
-     * Timeout para requisições
+     * Obtém dados da timeline
      */
-    private $timeout = 30;
-    
-    /**
-     * Construtor
-     */
-    public function __construct() {
-        $this->api_base = rest_url('tainacan/v2/');
-    }
-    
-/**
- * Obtém itens de uma coleção
- * 
- * @param int $collection_id ID da coleção
- * @param array $params Parâmetros da consulta
- * @return array|WP_Error
- */
-public function get_collection_items($collection_id, $params = []) {
-    // Validação
-    if (!$collection_id || !is_numeric($collection_id)) {
-        return new WP_Error('invalid_collection', __('ID da coleção inválido', 'tainacan-explorador'));
-    }
-    
-    // Cache check
-    $cache_key = 'tei_items_' . $collection_id . '_' . md5(serialize($params));
-    $cached = TEI_Cache_Manager::get($cache_key);
-    
-    if ($cached !== false) {
-        return $cached;
-    }
-    
-    // Tenta método direto do Tainacan PRIMEIRO (mais confiável)
-    if (class_exists('\\Tainacan\\Repositories\\Items')) {
-        try {
-            $items_repo = \Tainacan\Repositories\Items::get_instance();
-            $collection = new \Tainacan\Entities\Collection($collection_id);
+    private function get_timeline_data($collection_id, $mapping, $atts) {
+        // Verifica cache
+        if ($atts['cache']) {
+            $cache_key = 'tei_timeline_data_' . $collection_id . '_' . md5(serialize($atts) . serialize($mapping['filter_rules'] ?? []));
+            $cached_data = TEI_Cache_Manager::get($cache_key);
             
-            // Prepara argumentos
-            $args = [
-                'posts_per_page' => $params['perpage'] ?? 100,
-                'paged' => $params['paged'] ?? 1,
-                'order' => $params['order'] ?? 'DESC',
-                'orderby' => $params['orderby'] ?? 'date',
-                'post_status' => 'publish'
-            ];
-            
-            // Aplica filtros de metadados se existirem
-            if (isset($params['metaquery']) && is_array($params['metaquery'])) {
-                $meta_query = [];
-                
-                foreach ($params['metaquery'] as $query) {
-                    if (is_array($query)) {
-                        // Se for estrutura completa do meta_query
-                        if (isset($query['relation'])) {
-                            $meta_query = $query;
-                            break;
-                        } else {
-                            // Query individual
-                            $meta_query[] = [
-                                'key' => $query['key'],
-                                'value' => $query['value'],
-                                'compare' => $query['compare'] ?? '='
-                            ];
-                        }
-                    }
-                }
-                
-                if (!empty($meta_query)) {
-                    $args['meta_query'] = $meta_query;
-                }
+            if ($cached_data !== false) {
+                return $cached_data;
             }
-            
-            // Busca itens
-            $items = $items_repo->fetch($args, $collection, 'OBJECT');
-            $total = $items_repo->found_posts;
-            
-            // Processa itens
-            $processed_items = [];
-            foreach ($items as $item) {
-                $item_array = $item->_toArray();
-                
-                // Busca metadados do item
-                $metadata_repo = \Tainacan\Repositories\Metadata::get_instance();
-                $metadata = $metadata_repo->fetch($item, 'OBJECT');
-                
-                $metadata_array = [];
-                foreach ($metadata as $metadatum) {
-                    $meta_id = $metadatum->get_metadatum()->get_id();
-                    $metadata_array[$meta_id] = [
-                        'metadatum_id' => $meta_id,
-                        'metadatum' => [
-                            'id' => $meta_id,
-                            'name' => $metadatum->get_metadatum()->get_name()
-                        ],
-                        'value' => $metadatum->get_value(),
-                        'value_as_html' => $metadatum->get_value_as_html(),
-                        'value_as_string' => $metadatum->get_value_as_string()
+        }
+        
+        // Prepara parâmetros da API
+        $api_params = [
+            'perpage' => 200,
+            'paged' => 1,
+            'fetch_only' => 'title,description,thumbnail,document,_attachments'
+        ];
+        
+        // Aplica filtros configurados
+        if (!empty($mapping['filter_rules'])) {
+            $api_params = TEI_Metadata_Mapper::apply_filter_rules($api_params, $mapping['filter_rules']);
+        }
+        
+        // Adiciona filtro de data se especificado
+        $existing_metaquery = isset($api_params['metaquery']) && isset($api_params['metaquery']['relation']) 
+            ? $api_params['metaquery'] 
+            : (isset($api_params['metaquery']) ? ['relation' => 'AND', $api_params['metaquery']] : ['relation' => 'AND']);
+        
+        if (!empty($atts['start_date']) || !empty($atts['end_date'])) {
+            $date_field = $mapping['mapping_data']['date'] ?? '';
+            if ($date_field) {
+                if (!empty($atts['start_date'])) {
+                    $existing_metaquery[] = [
+                        'key' => $date_field,
+                        'value' => TEI_Sanitizer::sanitize($atts['start_date'], 'date'),
+                        'compare' => '>=',
+                        'type' => 'DATE'
                     ];
                 }
                 
-                $item_array['metadata'] = $metadata_array;
-                $processed_items[] = $this->normalize_item($item_array, $collection_id);
+                if (!empty($atts['end_date'])) {
+                    $existing_metaquery[] = [
+                        'key' => $date_field,
+                        'value' => TEI_Sanitizer::sanitize($atts['end_date'], 'date'),
+                        'compare' => '<=',
+                        'type' => 'DATE'
+                    ];
+                }
             }
-            
-            $result = [
-                'items' => $processed_items,
-                'total' => $total
-            ];
-            
-            // Cache result
-            if (!empty($result['items'])) {
-                TEI_Cache_Manager::set($cache_key, $result, HOUR_IN_SECONDS);
-            }
-            
-            return $result;
-            
-        } catch (Exception $e) {
-            error_log('TEI: Erro ao buscar via repositório: ' . $e->getMessage());
-            // Continua para tentar via API REST
-        }
-    }
-    
-    // Fallback para API REST
-    $endpoint = $this->api_base . "collection/{$collection_id}/items";
-    
-    // Parâmetros padrão
-    $defaults = [
-        'perpage' => 100,
-        'paged' => 1,
-        'order' => 'DESC',
-        'orderby' => 'date'
-    ];
-    
-    $params = wp_parse_args($params, $defaults);
-    
-    // Adiciona parâmetros à URL
-    $url = add_query_arg($params, $endpoint);
-    
-    // Faz requisição
-    $response = wp_remote_get($url, [
-        'timeout' => $this->timeout,
-        'headers' => [
-            'Content-Type' => 'application/json'
-        ]
-    ]);
-    
-    if (is_wp_error($response)) {
-        return $response;
-    }
-    
-    $body = wp_remote_retrieve_body($response);
-    $data = json_decode($body, true);
-    
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        return new WP_Error('json_error', __('Erro ao decodificar resposta', 'tainacan-explorador'));
-    }
-    
-    // Processa resposta
-    $items = [];
-    $total = 0;
-    
-    if (isset($data['items'])) {
-        $items = $data['items'];
-        $total = $data['found_items'] ?? count($items);
-    } else if (is_array($data)) {
-        $items = $data;
-        $headers = wp_remote_retrieve_headers($response);
-        if (isset($headers['x-wp-total'])) {
-            $total = intval($headers['x-wp-total']);
-        } else {
-            $total = count($items);
-        }
-    }
-    
-    // Processa cada item
-    $processed_items = [];
-    foreach ($items as $item) {
-        $processed_items[] = $this->normalize_item($item, $collection_id);
-    }
-    
-    $result = [
-        'items' => $processed_items,
-        'total' => $total
-    ];
-    
-    // Cache result
-    if (!empty($result['items'])) {
-        TEI_Cache_Manager::set($cache_key, $result, HOUR_IN_SECONDS);
-    }
-    
-    return $result;
-}
-    
-    /**
-     * Obtém metadados de uma coleção
-     * 
-     * @param int $collection_id ID da coleção
-     * @return array|WP_Error
-     */
-    public function get_collection_metadata($collection_id) {
-        // Cache check
-        $cache_key = 'tei_metadata_' . $collection_id;
-        $cached = TEI_Cache_Manager::get($cache_key);
-        
-        if ($cached !== false) {
-            return $cached;
         }
         
-        $metadata = [];
+        // Atualiza metaquery se houver filtros
+        if (count($existing_metaquery) > 1) {
+            $api_params['metaquery'] = $existing_metaquery;
+        }
         
-        // Usa API v2 do Tainacan
-        $endpoint = $this->api_base . "collection/{$collection_id}/metadata";
+        // Faz requisição à API REST do Tainacan
+        $endpoint = rest_url("tainacan/v2/collection/{$collection_id}/items");
+        $url = add_query_arg($api_params, $endpoint);
         
-        $response = wp_remote_get($endpoint, [
-            'timeout' => $this->timeout,
+        $api_response = wp_remote_get($url, [
+            'timeout' => 30,
             'headers' => [
                 'Content-Type' => 'application/json'
             ]
         ]);
         
-        if (!is_wp_error($response)) {
-            $body = wp_remote_retrieve_body($response);
-            $data = json_decode($body, true);
-            
-            if (is_array($data)) {
-                foreach ($data as $meta) {
-                    // Pula metadados core
-                    $metadata_type = $meta['metadata_type'] ?? '';
-                    if (strpos($metadata_type, 'Core_') !== false) {
-                        continue;
-                    }
-                    
-                    $metadata[] = [
-                        'id' => $meta['id'],
-                        'name' => $meta['name'] ?? '',
-                        'slug' => $meta['slug'] ?? '',
-                        'type' => $meta['metadata_type_object']['name'] ?? 'Text',
-                        'required' => $meta['required'] ?? false,
-                        'multiple' => $meta['multiple'] ?? false
-                    ];
-                }
+        if (is_wp_error($api_response)) {
+            return $api_response;
+        }
+        
+        $body = wp_remote_retrieve_body($api_response);
+        $data = json_decode($body, true);
+        
+        if (!is_array($data) || !isset($data['items'])) {
+            return new WP_Error('no_data', __('Nenhum dado encontrado', 'tainacan-explorador'));
+        }
+        
+        $response = ['items' => $data['items']];
+        
+        // Processa dados para o formato da timeline
+        $timeline_data = $this->process_timeline_data($response, $mapping);
+        
+        // Salva no cache
+        if ($atts['cache'] && !empty($timeline_data)) {
+            TEI_Cache_Manager::set($cache_key, $timeline_data, HOUR_IN_SECONDS);
+        }
+        
+        return $timeline_data;
+    }
+    
+ /**
+ * Processa dados para o formato TimelineJS
+ */
+private function process_timeline_data($response, $mapping) {
+    $timeline_data = [
+        'title' => [
+            'text' => [
+                'headline' => $mapping['collection_name'] ?? __('Timeline', 'tainacan-explorador'),
+                'text' => $mapping['visualization_settings']['description'] ?? ''
+            ]
+        ],
+        'events' => []
+    ];
+    
+    $date_field = $mapping['mapping_data']['date'] ?? '';
+    $title_field = $mapping['mapping_data']['title'] ?? '';
+    $description_field = $mapping['mapping_data']['description'] ?? '';
+    $image_field = $mapping['mapping_data']['image'] ?? '';
+    $category_field = $mapping['mapping_data']['category'] ?? '';
+    $link_field = $mapping['mapping_data']['link'] ?? '';
+    
+    foreach ($response['items'] as $item) {
+        // Obtém data
+        $date_value = $this->get_field_value($item, $date_field);
+        
+        if (empty($date_value)) {
+            continue;
+        }
+        
+        // Parse da data
+        $date_parts = $this->parse_date($date_value);
+        
+        if (!$date_parts) {
+            continue;
+        }
+        
+        // Cria evento
+        $event = [
+            'start_date' => $date_parts,
+            'text' => [
+                'headline' => TEI_Sanitizer::escape($this->get_field_value($item, $title_field, $item['title']), 'html'),
+                'text' => $this->format_description($item, $description_field, $category_field, $link_field)
+            ]
+        ];
+        
+        // Obtém imagem
+        $image_url = $this->get_image_url($item, $image_field);
+        if ($image_url) {
+            $event['media'] = [
+                'url' => $image_url,
+                'thumbnail' => $this->get_thumbnail_url($item),
+                'caption' => TEI_Sanitizer::escape($this->get_field_value($item, $title_field, $item['title']), 'html')
+            ];
+        }
+        
+        // Adiciona grupo/categoria se disponível
+        if ($category_field) {
+            $category = $this->get_field_value($item, $category_field);
+            if ($category) {
+                $event['group'] = TEI_Sanitizer::sanitize($category, 'text');
             }
         }
         
-        // Fallback para método direto se disponível
-        if (empty($metadata) && class_exists('\\Tainacan\\Repositories\\Metadata')) {
-            $repository = \Tainacan\Repositories\Metadata::get_instance();
-            $collection = new \Tainacan\Entities\Collection($collection_id);
-            
-            $tainacan_metadata = $repository->fetch_by_collection($collection, [], 'OBJECT');
-            
-            foreach ($tainacan_metadata as $meta) {
-                if (strpos($meta->get_metadata_type(), 'Core_') !== false) {
-                    continue;
+        // Adiciona tipo de evento
+        $event['unique_id'] = 'event-' . $item['id'];
+        
+        $timeline_data['events'][] = $event;
+    }
+    
+    // Ordena eventos por data
+    usort($timeline_data['events'], function($a, $b) {
+        $date_a = sprintf('%04d%02d%02d', 
+            $a['start_date']['year'], 
+            $a['start_date']['month'] ?? 1, 
+            $a['start_date']['day'] ?? 1
+        );
+        $date_b = sprintf('%04d%02d%02d', 
+            $b['start_date']['year'], 
+            $b['start_date']['month'] ?? 1, 
+            $b['start_date']['day'] ?? 1
+        );
+        return strcmp($date_a, $date_b);
+    });
+    
+    return $timeline_data;
+}
+
+/**
+ * Obtém valor de um campo
+ */
+private function get_field_value($item, $field_id, $default = '') {
+    if (empty($field_id)) {
+        return $default;
+    }
+    
+    // Campos especiais (não são IDs numéricos)
+    if (!is_numeric($field_id)) {
+        if ($field_id === 'title' && isset($item['title'])) {
+            return is_array($item['title']) ? ($item['title']['rendered'] ?? $item['title']) : $item['title'];
+        }
+        
+        if ($field_id === 'description' && isset($item['description'])) {
+            return is_array($item['description']) ? ($item['description']['rendered'] ?? $item['description']) : $item['description'];
+        }
+        
+        if ($field_id === 'thumbnail' && isset($item['thumbnail'])) {
+            return $item['thumbnail'];
+        }
+        
+        if ($field_id === 'document' && isset($item['document'])) {
+            return $item['document'];
+        }
+        
+        if ($field_id === '_attachments' && isset($item['_attachments'])) {
+            return $item['_attachments'];
+        }
+        
+        // Tenta acessar diretamente
+        if (isset($item[$field_id])) {
+            return $item[$field_id];
+        }
+    }
+    
+    // Para IDs numéricos - busca nos metadados
+    if (is_numeric($field_id) && isset($item['metadata'])) {
+        // Acesso direto por ID
+        if (isset($item['metadata'][$field_id])) {
+            $meta = $item['metadata'][$field_id];
+            if (is_array($meta)) {
+                $value = $meta['value'] ?? $meta['value_as_string'] ?? $meta['value_as_html'] ?? '';
+                // Se for array de valores, retorna o primeiro
+                if (is_array($value) && !empty($value)) {
+                    return reset($value);
                 }
-                
-                $metadata[] = [
-                    'id' => $meta->get_id(),
-                    'name' => $meta->get_name(),
-                    'slug' => $meta->get_slug(),
-                    'type' => $meta->get_metadata_type(),
-                    'required' => $meta->get_required(),
-                    'multiple' => $meta->get_multiple()
+                return $value;
+            }
+            return $meta;
+        }
+        
+        // Busca em array de metadados
+        foreach ($item['metadata'] as $meta) {
+            if (is_array($meta)) {
+                $meta_id = $meta['metadatum_id'] ?? $meta['metadatum']['id'] ?? $meta['id'] ?? null;
+                if ($meta_id == $field_id) {
+                    $value = $meta['value'] ?? $meta['value_as_string'] ?? '';
+                    if (is_array($value) && !empty($value)) {
+                        return reset($value);
+                    }
+                    return $value;
+                }
+            }
+        }
+    }
+    
+    return $default;
+}
+    
+    /**
+     * Parse de data
+     */
+    private function parse_date($date_value) {
+        $sanitized_date = TEI_Sanitizer::sanitize($date_value, 'date');
+        
+        if (empty($sanitized_date)) {
+            // Tenta apenas ano
+            if (preg_match('/^\d{4}$/', $date_value)) {
+                return [
+                    'year' => intval($date_value)
                 ];
             }
+            return null;
         }
         
-        // Cache result
-        if (!empty($metadata)) {
-            TEI_Cache_Manager::set($cache_key, $metadata, DAY_IN_SECONDS);
+        $timestamp = strtotime($sanitized_date);
+        
+        if ($timestamp === false) {
+            return null;
         }
         
-        return $metadata;
+        $date_parts = [
+            'year' => intval(date('Y', $timestamp))
+        ];
+        
+        // Adiciona mês e dia se não for apenas ano
+        if (!preg_match('/^\d{4}$/', $date_value)) {
+            $date_parts['month'] = intval(date('n', $timestamp));
+            $date_parts['day'] = intval(date('j', $timestamp));
+        }
+        
+        return $date_parts;
     }
     
     /**
-     * Normaliza estrutura do item do Tainacan
-     * 
-     * @param array $item Item bruto da API
-     * @param int $collection_id ID da coleção
-     * @return array
+     * Formata descrição do evento
      */
-    private function normalize_item($item, $collection_id) {
-        $normalized = [
-            'id' => $item['id'] ?? 0,
-            'title' => '',
-            'description' => '',
-            'url' => '',
-            'thumbnail' => [],
-            'document' => '',
-            '_attachments' => [],
-            'metadata' => []
-        ];
+    private function format_description($item, $description_field, $category_field, $link_field) {
+        $description = $this->get_field_value($item, $description_field, $item['description']);
+        $description = wp_kses_post($description);
         
-        // Título - pode estar em diferentes lugares
-        if (isset($item['title']['rendered'])) {
-            $normalized['title'] = $item['title']['rendered'];
-        } elseif (isset($item['title'])) {
-            $normalized['title'] = is_array($item['title']) ? $item['title']['value'] ?? '' : $item['title'];
+        // Adiciona categoria se disponível
+        if ($category_field) {
+            $category = $this->get_field_value($item, $category_field);
+            if ($category) {
+                $category = TEI_Sanitizer::escape($category, 'html');
+                $description = '<span class="tei-timeline-category">' . $category . '</span><br>' . $description;
+            }
         }
         
-        // Descrição
-        if (isset($item['description']['rendered'])) {
-            $normalized['description'] = $item['description']['rendered'];
-        } elseif (isset($item['description'])) {
-            $normalized['description'] = is_array($item['description']) ? $item['description']['value'] ?? '' : $item['description'];
+        // Adiciona link se disponível
+        $link = $this->get_field_value($item, $link_field, $item['url']);
+        if ($link) {
+            $link = TEI_Sanitizer::escape($link, 'url');
+            $description .= '<br><a href="' . $link . '" target="_blank" class="tei-timeline-link">' 
+                . __('Ver mais detalhes', 'tainacan-explorador') . '</a>';
         }
         
-        // URL do item
-        if (isset($item['url'])) {
-            $normalized['url'] = $item['url'];
-        } elseif (isset($item['link'])) {
-            $normalized['url'] = $item['link'];
-        } else {
-            // Constrói URL padrão do Tainacan
-            $normalized['url'] = home_url("/colecoes/{$collection_id}/items/{$item['id']}");
+        return $description;
+    }
+    
+    /**
+     * Obtém valor de um campo
+     */
+    private function get_field_value($item, $field_id, $default = '') {
+        if (empty($field_id)) {
+            return $default;
         }
         
-        // Thumbnail - estrutura do Tainacan
+        // Para campos especiais
+        if ($field_id === 'title' && isset($item['title'])) {
+            return is_array($item['title']) ? $item['title']['rendered'] : $item['title'];
+        }
+        
+        if ($field_id === 'description' && isset($item['description'])) {
+            return is_array($item['description']) ? $item['description']['rendered'] : $item['description'];
+        }
+        
+        if ($field_id === 'thumbnail' && isset($item['thumbnail'])) {
+            return $item['thumbnail'];
+        }
+        
+        // Para metadados do Tainacan (usando ID numérico)
+        if (is_numeric($field_id) && isset($item['metadata'])) {
+            foreach ($item['metadata'] as $meta) {
+                // Verifica diferentes estruturas possíveis
+                $meta_id = $meta['metadatum_id'] ?? $meta['metadatum']['id'] ?? $meta['id'] ?? null;
+                if ($meta_id == $field_id) {
+                    return $meta['value'] ?? $meta['value_as_string'] ?? '';
+                }
+            }
+        }
+        
+        // Tenta direto no item
+        if (isset($item[$field_id])) {
+            return $item[$field_id];
+        }
+        
+        return $default;
+    }
+    
+    /**
+     * Obtém URL da imagem em alta resolução
+     */
+    private function get_image_url($item, $image_field) {
+        // Se houver campo de imagem especificado
+        if (!empty($image_field)) {
+            $image_value = $this->get_field_value($item, $image_field);
+            if (!empty($image_value)) {
+                if (is_numeric($image_value)) {
+                    // Tenta obter imagem em tamanho full primeiro
+                    $image_url = wp_get_attachment_image_url($image_value, 'full');
+                    if ($image_url) {
+                        return $image_url;
+                    }
+                    // Fallback para large
+                    $image_url = wp_get_attachment_image_url($image_value, 'large');
+                    if ($image_url) {
+                        return $image_url;
+                    }
+                } elseif (filter_var($image_value, FILTER_VALIDATE_URL)) {
+                    return TEI_Sanitizer::escape($image_value, 'url');
+                }
+            }
+        }
+        
+        // Busca anexos do item
+        if (isset($item['_attachments']) && is_array($item['_attachments'])) {
+            foreach ($item['_attachments'] as $attachment) {
+                // Pega o primeiro anexo de imagem
+                if (isset($attachment['mime_type']) && strpos($attachment['mime_type'], 'image') === 0) {
+                    if (isset($attachment['url'])) {
+                        return $attachment['url'];
+                    }
+                }
+            }
+        }
+        
+        // Tenta pegar do document se disponível
+        if (isset($item['document']) && !empty($item['document'])) {
+            if (filter_var($item['document'], FILTER_VALIDATE_URL)) {
+                return $item['document'];
+            } elseif (is_numeric($item['document'])) {
+                $doc_url = wp_get_attachment_url($item['document']);
+                if ($doc_url) {
+                    return $doc_url;
+                }
+            }
+        }
+        
+        // Fallback para thumbnail em alta resolução
         if (isset($item['thumbnail'])) {
-            $normalized['thumbnail'] = $item['thumbnail'];
-        } elseif (isset($item['_thumbnail_id'])) {
-            $normalized['thumbnail'] = $this->get_thumbnail_sizes($item['_thumbnail_id']);
-        }
-        
-        // Document - documento principal do item
-        if (isset($item['document'])) {
-            $normalized['document'] = $item['document'];
-        }
-        
-        // Attachments - anexos do item
-        if (isset($item['_attachments'])) {
-            $normalized['_attachments'] = $item['_attachments'];
-        }
-        
-        // Metadados - estrutura específica do Tainacan
-        if (isset($item['metadata']) && is_array($item['metadata'])) {
-            // O Tainacan pode retornar metadados como array ou objeto
-            foreach ($item['metadata'] as $key => $meta) {
-                if (is_array($meta)) {
-                    // Estrutura típica do Tainacan v2
-                    $meta_id = $meta['metadatum_id'] ?? $meta['metadatum']['id'] ?? $key;
-                    $normalized['metadata'][$meta_id] = [
-                        'id' => $meta_id,
-                        'name' => $meta['metadatum']['name'] ?? '',
-                        'value' => $meta['value'] ?? '',
-                        'value_as_html' => $meta['value_as_html'] ?? '',
-                        'value_as_string' => $meta['value_as_string'] ?? ''
-                    ];
-                } else {
-                    // Formato simples
-                    $normalized['metadata'][$key] = [
-                        'value' => $meta
-                    ];
+            // Tenta pegar o maior tamanho disponível
+            $sizes = ['full', 'tainacan-large', 'large', 'tainacan-medium-full', 'medium_large', 'medium'];
+            foreach ($sizes as $size) {
+                if (isset($item['thumbnail'][$size])) {
+                    if (is_array($item['thumbnail'][$size]) && isset($item['thumbnail'][$size][0])) {
+                        return $item['thumbnail'][$size][0];
+                    } elseif (is_string($item['thumbnail'][$size])) {
+                        return $item['thumbnail'][$size];
+                    }
                 }
             }
         }
         
-        return $normalized;
+        return '';
     }
     
     /**
-     * Obtém tamanhos de thumbnail
-     * 
-     * @param int $attachment_id ID do anexo
-     * @return array
+     * Obtém URL do thumbnail (para preview)
      */
-    private function get_thumbnail_sizes($attachment_id) {
-        $sizes = [];
-        
-        // Tamanhos padrão do WordPress + Tainacan
-        $available = [
-            'thumbnail',
-            'medium', 
-            'medium_large',
-            'large',
-            'full',
-            'tainacan-small',
-            'tainacan-medium',
-            'tainacan-medium-full',
-            'tainacan-large'
-        ];
-        
-        foreach ($available as $size) {
-            $url = wp_get_attachment_image_url($attachment_id, $size);
-            if ($url) {
-                $sizes[$size] = $url;
+    private function get_thumbnail_url($item) {
+        if (isset($item['thumbnail'])) {
+            // Pega thumbnail pequeno para preview
+            $sizes = ['thumbnail', 'tainacan-small', 'medium'];
+            foreach ($sizes as $size) {
+                if (isset($item['thumbnail'][$size])) {
+                    if (is_array($item['thumbnail'][$size]) && isset($item['thumbnail'][$size][0])) {
+                        return $item['thumbnail'][$size][0];
+                    } elseif (is_string($item['thumbnail'][$size])) {
+                        return $item['thumbnail'][$size];
+                    }
+                }
             }
         }
-        
-        return $sizes;
+        return '';
     }
     
     /**
-     * Geocodifica um endereço
-     * 
-     * @param string $address Endereço
-     * @return array|null
+     * Obtém configurações da timeline
      */
-    public function geocode_address($address) {
-        if (empty($address)) {
-            return null;
-        }
+    private function get_timeline_config($atts, $mapping) {
+        $settings = $mapping['visualization_settings'] ?? [];
         
-        // Cache check
-        $cache_key = 'geocode_' . md5($address);
-        $cached = TEI_Cache_Manager::get($cache_key);
-        
-        if ($cached !== false) {
-            return $cached;
-        }
-        
-        $settings = get_option('tei_settings', []);
-        $service = $settings['geocoding_service'] ?? 'nominatim';
-        
-        $result = null;
-        
-        switch ($service) {
-            case 'nominatim':
-                $result = $this->geocode_nominatim($address);
-                break;
-            case 'google':
-                $api_key = $settings['geocoding_api_key'] ?? '';
-                if ($api_key) {
-                    $result = $this->geocode_google($address, $api_key);
-                }
-                break;
-            case 'mapbox':
-                $api_key = $settings['geocoding_api_key'] ?? '';
-                if ($api_key) {
-                    $result = $this->geocode_mapbox($address, $api_key);
-                }
-                break;
-        }
-        
-        // Cache result
-        if ($result) {
-            TEI_Cache_Manager::set($cache_key, $result, 30 * DAY_IN_SECONDS);
-        }
-        
-        return $result;
-    }
-    
-    /**
-     * Geocoding via Nominatim
-     */
-    private function geocode_nominatim($address) {
-        $url = 'https://nominatim.openstreetmap.org/search?' . http_build_query([
-            'q' => $address,
-            'format' => 'json',
-            'limit' => 1,
-            'addressdetails' => 1
-        ]);
-        
-        $response = wp_remote_get($url, [
-            'timeout' => 10,
-            'headers' => [
-                'User-Agent' => 'TainacanExplorador/1.0',
-                'Accept-Language' => get_locale()
+        $config = [
+            'initial_zoom' => intval($atts['initial_zoom']),
+            'language' => substr($atts['language'], 0, 2),
+            'timenav_position' => $atts['timenav_position'],
+            'hash_bookmark' => $atts['hash_bookmark'],
+            'debug' => $atts['debug'],
+            'duration' => intval($settings['duration'] ?? 1000),
+            'ease' => $settings['ease'] ?? 'easeInOutQuint',
+            'dragging' => $settings['dragging'] ?? true,
+            'trackResize' => true,
+            'slide_padding_lr' => intval($settings['slide_padding'] ?? 100),
+            'slide_default_fade' => $settings['slide_fade'] ?? '0%',
+            'marker' => [
+                'line_color' => $settings['marker_color'] ?? '#da2121',
+                'line_color_inactive' => $settings['marker_inactive'] ?? '#CCC'
             ]
-        ]);
-        
-        if (is_wp_error($response)) {
-            return null;
-        }
-        
-        $data = json_decode(wp_remote_retrieve_body($response), true);
-        
-        if (empty($data) || !isset($data[0]['lat'])) {
-            return null;
-        }
-        
-        return [
-            'lat' => floatval($data[0]['lat']),
-            'lon' => floatval($data[0]['lon']),
-            'display_name' => $data[0]['display_name'] ?? $address
         ];
+        
+        // Adiciona fontes customizadas se configuradas
+        if (!empty($settings['font_headline'])) {
+            $config['font'] = $settings['font_headline'];
+        }
+        
+        return apply_filters('tei_timeline_config', $config, $atts, $mapping);
     }
     
     /**
-     * Geocoding via Google
+     * Renderiza a timeline
      */
-    private function geocode_google($address, $api_key) {
-        $url = 'https://maps.googleapis.com/maps/api/geocode/json?' . http_build_query([
-            'address' => $address,
-            'key' => $api_key,
-            'language' => substr(get_locale(), 0, 2)
-        ]);
+    private function render_timeline($timeline_id, $timeline_data, $config, $atts) {
+        ob_start();
+        ?>
+        <div class="tei-timeline-container <?php echo esc_attr($atts['class']); ?>" style="width: 100vw; height: 100vh; position: relative; margin: 0;">
+            <div id="<?php echo esc_attr($timeline_id); ?>" 
+                 class="tei-timeline" 
+                 style="height: 100%; width: 100%;">
+            </div>
+            
+            <?php if (empty($timeline_data['events'])): ?>
+            <div class="tei-no-data">
+                <p><?php esc_html_e('Nenhum evento encontrado para exibir na linha do tempo.', 'tainacan-explorador'); ?></p>
+            </div>
+            <?php else: ?>
+            <div class="tei-loading-overlay" id="tei-loading-<?php echo esc_attr($timeline_id); ?>" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.9); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+                <div class="tei-loading-content">
+                    <div class="tei-spinner"></div>
+                    <p><?php esc_html_e('Carregando linha do tempo...', 'tainacan-explorador'); ?></p>
+                </div>
+            </div>
+            
+            <script type="text/javascript">
+            (function() {
+                var timelineData = <?php echo wp_json_encode($timeline_data); ?>;
+                var timelineConfig = <?php echo wp_json_encode($config); ?>;
+                var timelineId = '<?php echo esc_js($timeline_id); ?>';
+                
+                function initTimeline() {
+                    if (typeof TL !== 'undefined' && TL.Timeline) {
+                        try {
+                            new TL.Timeline(timelineId, timelineData, timelineConfig);
+                            // Remove loading após criar timeline
+                            var loading = document.getElementById('tei-loading-' + timelineId);
+                            if (loading) {
+                                loading.style.display = 'none';
+                            }
+                        } catch(e) {
+                            console.error('Erro ao criar timeline:', e);
+                            var loading = document.getElementById('tei-loading-' + timelineId);
+                            if (loading) {
+                                loading.innerHTML = '<p>Erro ao carregar timeline</p>';
+                            }
+                        }
+                    } else {
+                        setTimeout(initTimeline, 100);
+                    }
+                }
+                
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', initTimeline);
+                } else {
+                    initTimeline();
+                }
+            })();
+            </script>
+            <?php endif; ?>
+        </div>
         
-        $response = wp_remote_get($url, ['timeout' => 10]);
-        
-        if (is_wp_error($response)) {
-            return null;
+        <style>
+        .tei-timeline-container {
+            margin-left: 0 !important;
+            margin-right: 0 !important;
         }
-        
-        $data = json_decode(wp_remote_retrieve_body($response), true);
-        
-        if (empty($data['results']) || !isset($data['results'][0]['geometry'])) {
-            return null;
+        @media (max-width: 100%) {
+            .tei-timeline-container {
+                width: 100vw !important;
+                margin: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+            }
+            .tl-timeline {
+                font-size: 14px !important;
+            }
         }
+        </style>
+        <?php
         
-        $location = $data['results'][0]['geometry']['location'];
+        $output = ob_get_clean();
         
-        return [
-            'lat' => floatval($location['lat']),
-            'lon' => floatval($location['lng']),
-            'display_name' => $data['results'][0]['formatted_address'] ?? $address
-        ];
+        // Remove quebras de linha extras que podem causar problemas JSON
+        $output = trim($output);
+        
+        return $output;
     }
     
     /**
-     * Geocoding via Mapbox
+     * Renderiza mensagem de erro
      */
-    private function geocode_mapbox($address, $api_key) {
-        $url = sprintf(
-            'https://api.mapbox.com/geocoding/v5/mapbox.places/%s.json?access_token=%s&language=%s',
-            urlencode($address),
-            $api_key,
-            substr(get_locale(), 0, 2)
+    private function render_error($message) {
+        return sprintf(
+            '<div class="tei-error"><p>%s</p></div>',
+            esc_html($message)
         );
-        
-        $response = wp_remote_get($url, ['timeout' => 10]);
-        
-        if (is_wp_error($response)) {
-            return null;
-        }
-        
-        $data = json_decode(wp_remote_retrieve_body($response), true);
-        
-        if (empty($data['features'])) {
-            return null;
-        }
-        
-        $coordinates = $data['features'][0]['geometry']['coordinates'];
-        
-        return [
-            'lat' => floatval($coordinates[1]),
-            'lon' => floatval($coordinates[0]),
-            'display_name' => $data['features'][0]['place_name'] ?? $address
-        ];
     }
 }
