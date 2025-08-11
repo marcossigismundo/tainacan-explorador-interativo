@@ -29,6 +29,7 @@ class TEI_Timeline_Shortcode {
             'hash_bookmark' => false,
             'debug' => false,
             'cache' => true,
+            'theme' => 'modern', // novo: tema visual
             'class' => '',
             'id' => 'tei-timeline-' . uniqid()
         ]);
@@ -111,6 +112,23 @@ class TEI_Timeline_Shortcode {
         $title_field = $mapping['mapping_data']['title'] ?? '';
         $description_field = $mapping['mapping_data']['description'] ?? '';
         $image_field = $mapping['mapping_data']['image'] ?? '';
+        $category_field = $mapping['mapping_data']['category'] ?? '';
+        
+        // Array de cores para categorias
+        $category_colors = [];
+        $color_palette = [
+            '#3b82f6', // blue
+            '#8b5cf6', // purple
+            '#ec4899', // pink
+            '#f97316', // orange
+            '#10b981', // emerald
+            '#06b6d4', // cyan
+            '#f59e0b', // amber
+            '#6366f1', // indigo
+            '#14b8a6', // teal
+            '#84cc16', // lime
+        ];
+        $color_index = 0;
         
         foreach ($items as $item) {
             // Busca metadados do item
@@ -177,6 +195,52 @@ class TEI_Timeline_Shortcode {
                 $description = $item->post_excerpt ?: wp_trim_words($item->post_content, 30);
             }
             
+            // Obtém categoria (para cor de fundo)
+            $category = '';
+            $background_color = '';
+            if ($category_field && isset($metadata[$category_field])) {
+                $category = $metadata[$category_field];
+                
+                // Atribui cor para categoria
+                if (!isset($category_colors[$category])) {
+                    $category_colors[$category] = $color_palette[$color_index % count($color_palette)];
+                    $color_index++;
+                }
+                $background_color = $category_colors[$category];
+            }
+            
+            // IMPORTANTE: Obtém o link do item no Tainacan
+            $item_url = get_permalink($item->ID);
+            
+            // Adiciona link ao título e botão "Ver mais"
+            $title_with_link = sprintf(
+                '<a href="%s" target="_blank" style="color: inherit; text-decoration: none;">%s</a>',
+                esc_url($item_url),
+                esc_html($title)
+            );
+            
+            // Adiciona botão "Ver no Tainacan" à descrição
+            $description_with_link = wp_kses_post($description);
+            $description_with_link .= sprintf(
+                '<div style="margin-top: 15px;">
+                    <a href="%s" target="_blank" style="
+                        display: inline-block;
+                        padding: 8px 16px;
+                        background: linear-gradient(135deg, #3b82f6 0%%, #8b5cf6 100%%);
+                        color: white;
+                        text-decoration: none;
+                        border-radius: 6px;
+                        font-size: 14px;
+                        font-weight: 500;
+                        transition: transform 0.2s;
+                    " onmouseover="this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.transform=\'translateY(0)\'">
+                        %s →
+                    </a>
+                </div>',
+                esc_url($item_url),
+                __('Ver no Tainacan', 'tainacan-explorador')
+            );
+            
             // Obtém imagem
             $image_url = '';
             if ($image_field === 'thumbnail') {
@@ -195,12 +259,18 @@ class TEI_Timeline_Shortcode {
                 }
             }
             
-            // Cria evento
+            // Cria evento com estilo customizado
             $event = [
                 'start_date' => $date_parts,
                 'text' => [
-                    'headline' => esc_html($title),
-                    'text' => wp_kses_post($description)
+                    'headline' => $title_with_link,
+                    'text' => $description_with_link
+                ],
+                // Adiciona classe CSS customizada baseada na categoria
+                'group' => $category ?: 'default',
+                'background' => [
+                    'color' => $background_color ?: '#f0f9ff',
+                    'url' => '' // pode adicionar imagem de fundo se desejar
                 ]
             ];
             
@@ -208,7 +278,8 @@ class TEI_Timeline_Shortcode {
                 $event['media'] = [
                     'url' => $image_url,
                     'thumbnail' => get_the_post_thumbnail_url($item->ID, 'thumbnail'),
-                    'caption' => esc_html($title)
+                    'caption' => esc_html($title),
+                    'link' => $item_url
                 ];
             }
             
@@ -336,7 +407,7 @@ class TEI_Timeline_Shortcode {
     private function render_timeline($timeline_id, $timeline_data, $config, $atts) {
         ob_start();
         ?>
-        <div class="tei-timeline-wrapper" style="width: <?php echo esc_attr($atts['width']); ?>;">
+        <div class="tei-timeline-wrapper tei-timeline-<?php echo esc_attr($atts['theme']); ?>" style="width: <?php echo esc_attr($atts['width']); ?>;">
             <div id="<?php echo esc_attr($timeline_id); ?>" 
                  style="width: 100%; height: <?php echo esc_attr($atts['height']); ?>;">
             </div>
@@ -376,8 +447,121 @@ class TEI_Timeline_Shortcode {
         </script>
         
         <style>
-        .tei-timeline-wrapper { margin: 20px 0; }
-        #<?php echo esc_attr($timeline_id); ?> { min-height: 500px; }
+        .tei-timeline-wrapper { 
+            margin: 20px 0; 
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        #<?php echo esc_attr($timeline_id); ?> { 
+            min-height: 500px; 
+        }
+        
+        /* Estilo moderno para a timeline */
+        .tei-timeline-modern .tl-timeline {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        }
+        
+        /* Cards com gradiente suave */
+        .tei-timeline-modern .tl-text {
+            background: linear-gradient(135deg, #f6f9fc 0%, #ffffff 100%) !important;
+            border-radius: 12px !important;
+            padding: 20px !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+        }
+        
+        /* Hover effect nos cards */
+        .tei-timeline-modern .tl-text:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important;
+            transition: all 0.3s ease;
+        }
+        
+        /* Estilo para diferentes categorias/grupos */
+        .tl-timeline .tl-timemarker[class*="tl-timemarker-group"] .tl-timemarker-content-container {
+            border-radius: 8px !important;
+            overflow: hidden;
+        }
+        
+        /* Cores para grupos/categorias */
+        .tl-timeline .tl-timemarker-group-1 .tl-timemarker-content-container {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%) !important;
+        }
+        
+        .tl-timeline .tl-timemarker-group-2 .tl-timemarker-content-container {
+            background: linear-gradient(135deg, #e9d5ff 0%, #d8b4fe 100%) !important;
+        }
+        
+        .tl-timeline .tl-timemarker-group-3 .tl-timemarker-content-container {
+            background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%) !important;
+        }
+        
+        .tl-timeline .tl-timemarker-group-4 .tl-timemarker-content-container {
+            background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%) !important;
+        }
+        
+        .tl-timeline .tl-timemarker-group-5 .tl-timemarker-content-container {
+            background: linear-gradient(135deg, #bbf7d0 0%, #86efac 100%) !important;
+        }
+        
+        /* Estilo para os títulos */
+        .tl-headline {
+            font-weight: 600 !important;
+            color: #1f2937 !important;
+            margin-bottom: 12px !important;
+        }
+        
+        /* Links nos títulos */
+        .tl-headline a {
+            color: inherit !important;
+            text-decoration: none !important;
+            border-bottom: 2px solid transparent;
+            transition: border-color 0.2s;
+        }
+        
+        .tl-headline a:hover {
+            border-bottom-color: #3b82f6;
+        }
+        
+        /* Navegação temporal mais moderna */
+        .tl-timenav {
+            background: linear-gradient(180deg, #f9fafb 0%, #f3f4f6 100%) !important;
+            border-top: 1px solid #e5e7eb !important;
+        }
+        
+        /* Marcadores da timeline */
+        .tl-timemarker .tl-timemarker-line-left,
+        .tl-timemarker .tl-timemarker-line-right {
+            border-color: #d1d5db !important;
+        }
+        
+        /* Ponto ativo */
+        .tl-timemarker.tl-timemarker-active .tl-timemarker-content-container {
+            box-shadow: 0 8px 16px rgba(59, 130, 246, 0.2) !important;
+            border: 2px solid #3b82f6 !important;
+        }
+        
+        /* Imagens com borda arredondada */
+        .tl-media-image img {
+            border-radius: 8px !important;
+        }
+        
+        /* Animação de entrada */
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .tl-slide-content {
+            animation: slideInUp 0.5s ease;
+        }
         </style>
         <?php
         
