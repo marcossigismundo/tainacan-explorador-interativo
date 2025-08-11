@@ -218,62 +218,76 @@ class TainacanExploradorInterativo {
         exit;
     }
     
-    /**
-     * Renderiza preview
-     */
-    private function render_preview($type, $collection_id) {
+/**
+ * Renderiza preview
+ */
+private function render_preview($type, $collection_id) {
+    ?>
+    <!DOCTYPE html>
+    <html <?php language_attributes(); ?>>
+    <head>
+        <meta charset="<?php bloginfo('charset'); ?>">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title><?php echo sprintf(__('Preview - %s', 'tainacan-explorador'), ucfirst($type)); ?></title>
+        <?php 
         // Força carregamento de assets
         $this->conditionally_enqueue_assets(true, $type);
-        
+        wp_head(); 
         ?>
-        <!DOCTYPE html>
-        <html <?php language_attributes(); ?>>
-        <head>
-            <meta charset="<?php bloginfo('charset'); ?>">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title><?php echo sprintf(__('Preview - %s', 'tainacan-explorador'), ucfirst($type)); ?></title>
-            <?php wp_head(); ?>
-            <style>
-                body { margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-                .preview-header { background: #f0f0f1; padding: 15px; margin: -20px -20px 20px; border-bottom: 1px solid #c3c4c7; }
-                .preview-title { margin: 0; font-size: 18px; color: #1d2327; }
-                .preview-close { float: right; text-decoration: none; color: #787c82; }
-                .preview-close:hover { color: #2271b1; }
-                .preview-container { max-width: 1200px; margin: 0 auto; }
-            </style>
-        </head>
-        <body>
-            <div class="preview-header">
-                <a href="#" class="preview-close" onclick="window.close()">✕ <?php _e('Fechar', 'tainacan-explorador'); ?></a>
-                <h1 class="preview-title">
-                    <?php echo sprintf(__('Preview: %s - Coleção #%d', 'tainacan-explorador'), ucfirst($type), $collection_id); ?>
-                </h1>
-            </div>
-            
-            <div class="preview-container">
-                <?php
-                // Renderiza shortcode correspondente
-                switch($type) {
-                    case 'map':
-                        echo do_shortcode('[tainacan_explorador_mapa collection="' . $collection_id . '" height="600px"]');
-                        break;
-                    case 'timeline':
-                        echo do_shortcode('[tainacan_explorador_timeline collection="' . $collection_id . '"]');
-                        break;
-                    case 'story':
-                        echo do_shortcode('[tainacan_explorador_story collection="' . $collection_id . '"]');
-                        break;
-                    default:
-                        echo '<p>' . __('Tipo de visualização inválido', 'tainacan-explorador') . '</p>';
-                }
-                ?>
-            </div>
-            
-            <?php wp_footer(); ?>
-        </body>
-        </html>
-        <?php
-    }
+        <style>
+            body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+            .preview-header { 
+                background: #f0f0f1; 
+                padding: 15px; 
+                border-bottom: 1px solid #c3c4c7; 
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                z-index: 10000;
+            }
+            .preview-title { margin: 0; font-size: 18px; color: #1d2327; }
+            .preview-close { float: right; text-decoration: none; color: #787c82; }
+            .preview-close:hover { color: #2271b1; }
+            .preview-container { 
+                margin-top: 60px; /* Espaço para header fixo */
+                width: 100%;
+                height: calc(100vh - 60px);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="preview-header">
+            <a href="#" class="preview-close" onclick="window.close()">✕ <?php _e('Fechar', 'tainacan-explorador'); ?></a>
+            <h1 class="preview-title">
+                <?php echo sprintf(__('Preview: %s - Coleção #%d', 'tainacan-explorador'), ucfirst($type), $collection_id); ?>
+            </h1>
+        </div>
+        
+        <div class="preview-container">
+            <?php
+            // Renderiza shortcode correspondente
+            switch($type) {
+                case 'map':
+                    echo do_shortcode('[tainacan_explorador_mapa collection="' . $collection_id . '" height="100%" width="100%"]');
+                    break;
+                case 'timeline':
+                    echo do_shortcode('[tainacan_explorador_timeline collection="' . $collection_id . '" height="100%"]');
+                    break;
+                case 'story':
+                    echo do_shortcode('[tainacan_explorador_story collection="' . $collection_id . '" height="100%"]');
+                    break;
+                default:
+                    echo '<p style="padding: 20px;">' . __('Tipo de visualização inválido', 'tainacan-explorador') . '</p>';
+            }
+            ?>
+        </div>
+        
+        <?php wp_footer(); ?>
+    </body>
+    </html>
+    <?php
+}
     
     /**
      * Exclui shortcodes do wptexturize
@@ -455,3 +469,4 @@ add_filter('plugin_action_links_' . TEI_PLUGIN_BASENAME, function($links) {
     array_unshift($links, $settings_link);
     return $links;
 });
+
