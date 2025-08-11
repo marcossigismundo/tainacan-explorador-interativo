@@ -16,7 +16,6 @@ class TEI_Ajax_Handler {
      * Obtém coleções disponíveis
      */
     public function get_collections() {
-        // Verifica nonce
         if (!check_ajax_referer('tei_admin', 'nonce', false)) {
             wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
             return;
@@ -24,19 +23,13 @@ class TEI_Ajax_Handler {
         
         try {
             $collections = [];
-            
-            // Primeiro tenta via API REST do Tainacan v2
             $endpoint = rest_url('tainacan/v2/collections');
             
-            // Faz a requisição com contexto de edição se o usuário tiver permissão
             $args = [
                 'timeout' => 30,
-                'headers' => [
-                    'Content-Type' => 'application/json',
-                ]
+                'headers' => ['Content-Type' => 'application/json']
             ];
             
-            // Se o usuário estiver logado, adiciona cookies para autenticação
             if (is_user_logged_in()) {
                 $args['cookies'] = $_COOKIE;
                 $endpoint = add_query_arg('context', 'edit', $endpoint);
@@ -50,24 +43,14 @@ class TEI_Ajax_Handler {
                 
                 if (is_array($tainacan_collections)) {
                     foreach ($tainacan_collections as $col) {
-                        // Para cada coleção, busca a contagem de itens
                         $items_endpoint = rest_url("tainacan/v2/collection/{$col['id']}/items");
-                        $items_args = [
-                            'timeout' => 10,
-                            'headers' => [
-                                'Content-Type' => 'application/json'
-                            ]
-                        ];
-                        
-                        // Adiciona parâmetro para pegar apenas 1 item (para contagem)
                         $items_endpoint = add_query_arg(['perpage' => 1], $items_endpoint);
                         
-                        $items_response = wp_remote_get($items_endpoint, $items_args);
-                        
+                        $items_response = wp_remote_get($items_endpoint, ['timeout' => 10]);
                         $total_items = 0;
+                        
                         if (!is_wp_error($items_response)) {
                             $headers = wp_remote_retrieve_headers($items_response);
-                            // O Tainacan retorna o total no header X-WP-Total
                             if (isset($headers['x-wp-total'])) {
                                 $total_items = intval($headers['x-wp-total']);
                             }
@@ -82,53 +65,34 @@ class TEI_Ajax_Handler {
                 }
             }
             
-            // Se a API não retornar nada, tenta query direta
-            if (empty($collections)) {
-                // Busca diretamente no banco via WP_Query
-                $args = [
-                    'post_type' => 'tainacan-collection',
-                    'posts_per_page' => -1,
-                    'post_status' => 'publish'
-                ];
-                
-                $query = new WP_Query($args);
-                
-                if ($query->have_posts()) {
-                    while ($query->have_posts()) {
-                        $query->the_post();
-                        $collection_id = get_the_ID();
-                        
-                        // Busca post type dos itens desta coleção
-                        $collection_post_type = 'tnc_col_' . $collection_id . '_item';
-                        
-                        // Conta os itens publicados
-                        $count_posts = wp_count_posts($collection_post_type);
-                        $total_items = isset($count_posts->publish) ? intval($count_posts->publish) : 0;
-                        
-                        $collections[] = [
-                            'id' => $collection_id,
-                            'name' => get_the_title(),
-                            'items_count' => $total_items
-                        ];
-                    }
-                    wp_reset_postdata();
-                }
-            }
-            
             wp_send_json_success($collections);
             
         } catch (Exception $e) {
-            wp_send_json_error([
-                'message' => __('Erro ao carregar coleções: ', 'tainacan-explorador') . $e->getMessage()
-            ]);
+            wp_send_json_error(['message' => __('Erro ao carregar coleções: ', 'tainacan-explorador') . $e->getMessage()]);
         }
     }
     
     /**
-     * Obtém metadados de uma coleção
+     * Limpa cache de coleção
+     */
+    public function clear_collection_cache() {
+        if (!check_ajax_referer('tei_admin', 'nonce', false)) {
+            wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
+            return;
+        }
+        
+        $collection_id = intval($_POST['collection_id'] ?? 0);
+        if ($collection_id) {
+            TEI_Cache_Manager::clear_collection_cache($collection_id);
+        }
+        
+        wp_send_json_success();
+    }
+    
+    /**
+     * Obtém metadados de uma coleção (sem duplicação)
      */
     public function get_metadata() {
-        // Verifica nonce
         if (!check_ajax_referer('tei_admin', 'nonce', false)) {
             wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
             return;
@@ -142,7 +106,10 @@ class TEI_Ajax_Handler {
         }
         
         try {
-            // Usa TEI_API_Handler para obter metadados
+            // Limpa cache para buscar dados atualizados
+            TEI_Cache_Manager::delete('tei_metadata_' . $collection_id);
+            
+            // Busca metadados via API
             $api_handler = new TEI_API_Handler();
             $metadata = $api_handler->get_collection_metadata($collection_id);
             
@@ -151,22 +118,46 @@ class TEI_Ajax_Handler {
                 return;
             }
             
-            // Adiciona campos especiais que sempre existem
-            $special_fields = [
-                ['id' => 'thumbnail', 'name' => __('Miniatura', 'tainacan-explorador'), 'type' => 'image', 'slug' => 'thumbnail'],
-                ['id' => 'document', 'name' => __('Documento', 'tainacan-explorador'), 'type' => 'attachment', 'slug' => 'document'],
-                ['id' => '_attachments', 'name' => __('Anexos', 'tainacan-explorador'), 'type' => 'attachments', 'slug' => '_attachments'],
-                ['id' => 'title', 'name' => __('Título', 'tainacan-explorador'), 'type' => 'text', 'slug' => 'title'],
-                ['id' => 'description', 'name' => __('Descrição', 'tainacan-explorador'), 'type' => 'textarea', 'slug' => 'description']
-            ];
+            // Adiciona campos especiais SEM duplicar
+            $special_fields = [];
+            $existing_slugs = array_column($metadata, 'slug');
+            
+            // Só adiciona se não existir
+            if (!in_array('thumbnail', $existing_slugs)) {
+                $special_fields[] = ['id' => 'thumbnail', 'name' => __('Miniatura', 'tainacan-explorador'), 'type' => 'image', 'slug' => 'thumbnail'];
+            }
+            if (!in_array('document', $existing_slugs)) {
+                $special_fields[] = ['id' => 'document', 'name' => __('Documento', 'tainacan-explorador'), 'type' => 'attachment', 'slug' => 'document'];
+            }
+            if (!in_array('_attachments', $existing_slugs)) {
+                $special_fields[] = ['id' => '_attachments', 'name' => __('Anexos', 'tainacan-explorador'), 'type' => 'attachments', 'slug' => '_attachments'];
+            }
+            
+            // Adiciona título e descrição apenas se não existirem com esses nomes exatos
+            $has_title = false;
+            $has_description = false;
+            
+            foreach ($metadata as $meta) {
+                if (strtolower($meta['name']) === 'título' || strtolower($meta['name']) === 'title') {
+                    $has_title = true;
+                }
+                if (strtolower($meta['name']) === 'descrição' || strtolower($meta['name']) === 'description') {
+                    $has_description = true;
+                }
+            }
+            
+            if (!$has_title) {
+                $special_fields[] = ['id' => 'title', 'name' => __('Título', 'tainacan-explorador'), 'type' => 'text', 'slug' => 'title'];
+            }
+            if (!$has_description) {
+                $special_fields[] = ['id' => 'description', 'name' => __('Descrição', 'tainacan-explorador'), 'type' => 'textarea', 'slug' => 'description'];
+            }
             
             $metadata = array_merge($metadata, $special_fields);
             
             // Obtém mapeamentos existentes
             $existing_mappings = [];
-            $mapping_types = ['map', 'timeline', 'story'];
-            
-            foreach ($mapping_types as $type) {
+            foreach (['map', 'timeline', 'story'] as $type) {
                 $mapping = TEI_Metadata_Mapper::get_mapping($collection_id, $type);
                 if ($mapping) {
                     $existing_mappings[$type] = $mapping;
@@ -175,19 +166,11 @@ class TEI_Ajax_Handler {
             
             wp_send_json_success([
                 'metadata' => $metadata,
-                'mappings' => $existing_mappings,
-                'debug' => [
-                    'collection_id' => $collection_id,
-                    'metadata_count' => count($metadata),
-                    'has_mappings' => !empty($existing_mappings)
-                ]
+                'mappings' => $existing_mappings
             ]);
             
         } catch (Exception $e) {
-            error_log('TEI Error: ' . $e->getMessage());
-            wp_send_json_error([
-                'message' => __('Erro ao carregar metadados: ', 'tainacan-explorador') . $e->getMessage()
-            ]);
+            wp_send_json_error(['message' => __('Erro ao carregar metadados: ', 'tainacan-explorador') . $e->getMessage()]);
         }
     }
     
@@ -195,13 +178,11 @@ class TEI_Ajax_Handler {
      * Salva mapeamento
      */
     public function save_mapping() {
-        // Verifica nonce
         if (!check_ajax_referer('tei_admin', 'nonce', false)) {
             wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
             return;
         }
         
-        // Valida dados
         $collection_id = intval($_POST['collection_id'] ?? 0);
         $collection_name = sanitize_text_field($_POST['collection_name'] ?? '');
         $mapping_type = sanitize_key($_POST['mapping_type'] ?? '');
@@ -214,29 +195,21 @@ class TEI_Ajax_Handler {
             return;
         }
         
-        // Sanitiza dados do mapeamento preservando IDs
+        // Sanitiza mapeamento preservando IDs
         $sanitized_mapping = [];
         if (is_array($mapping_data)) {
             foreach ($mapping_data as $key => $value) {
-                $sanitized_mapping[sanitize_key($key)] = $value; // Preserva IDs numéricos
+                $sanitized_mapping[sanitize_key($key)] = $value;
             }
         }
         
-        // Sanitiza configurações de visualização
-        $sanitized_settings = [];
-        if (is_array($visualization_settings)) {
-            foreach ($visualization_settings as $key => $value) {
-                $sanitized_settings[sanitize_key($key)] = sanitize_text_field($value);
-            }
-        }
-        
-        // Sanitiza regras de filtro
+        // Sanitiza filtros
         $sanitized_filters = [];
         if (is_array($filter_rules)) {
             foreach ($filter_rules as $rule) {
-                if (is_array($rule)) {
+                if (is_array($rule) && !empty($rule['metadatum'])) {
                     $sanitized_filters[] = [
-                        'metadatum' => $rule['metadatum'] ?? '',
+                        'metadatum' => $rule['metadatum'],
                         'operator' => sanitize_text_field($rule['operator'] ?? '='),
                         'value' => sanitize_text_field($rule['value'] ?? '')
                     ];
@@ -244,13 +217,12 @@ class TEI_Ajax_Handler {
             }
         }
         
-        // Salva mapeamento
         $result = TEI_Metadata_Mapper::save_mapping([
             'collection_id' => $collection_id,
             'collection_name' => $collection_name,
             'mapping_type' => $mapping_type,
             'mapping_data' => $sanitized_mapping,
-            'visualization_settings' => $sanitized_settings,
+            'visualization_settings' => $visualization_settings,
             'filter_rules' => $sanitized_filters
         ]);
         
@@ -259,27 +231,15 @@ class TEI_Ajax_Handler {
             return;
         }
         
-        if (!$result) {
-            wp_send_json_error(['message' => __('Erro ao salvar mapeamento', 'tainacan-explorador')]);
-            return;
-        }
+        TEI_Cache_Manager::clear_collection_cache($collection_id);
         
-        // Limpa cache
-        if (class_exists('TEI_Cache_Manager')) {
-            TEI_Cache_Manager::clear_collection_cache($collection_id);
-        }
-        
-        wp_send_json_success([
-            'message' => __('Mapeamento salvo com sucesso!', 'tainacan-explorador'),
-            'mapping_id' => $result
-        ]);
+        wp_send_json_success(['message' => __('Mapeamento salvo com sucesso!', 'tainacan-explorador'), 'mapping_id' => $result]);
     }
     
     /**
      * Obtém todos os mapeamentos
      */
     public function get_all_mappings() {
-        // Verifica nonce
         if (!check_ajax_referer('tei_admin', 'nonce', false)) {
             wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
             return;
@@ -289,9 +249,7 @@ class TEI_Ajax_Handler {
         
         wp_send_json_success([
             'mappings' => $mappings,
-            'total' => count($mappings),
-            'page' => 1,
-            'per_page' => 20
+            'total' => count($mappings)
         ]);
     }
     
@@ -299,7 +257,6 @@ class TEI_Ajax_Handler {
      * Deleta mapeamento
      */
     public function delete_mapping() {
-        // Verifica nonce
         if (!check_ajax_referer('tei_admin', 'nonce', false)) {
             wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
             return;
