@@ -518,92 +518,115 @@ private function get_field_value($item, $field_id, $default = '') {
     }
     
     /**
-     * Renderiza a timeline
-     */
-    private function render_timeline($timeline_id, $timeline_data, $config, $atts) {
-        ob_start();
-        ?>
-        <div class="tei-timeline-container <?php echo esc_attr($atts['class']); ?>" style="width: 100vw; height: 100vh; position: relative; margin: 0;">
-            <div id="<?php echo esc_attr($timeline_id); ?>" 
-                 class="tei-timeline" 
-                 style="height: 100%; width: 100%;">
-            </div>
-            
-            <?php if (empty($timeline_data['events'])): ?>
-            <div class="tei-no-data">
-                <p><?php esc_html_e('Nenhum evento encontrado para exibir na linha do tempo.', 'tainacan-explorador'); ?></p>
-            </div>
-            <?php else: ?>
-            <div class="tei-loading-overlay" id="tei-loading-<?php echo esc_attr($timeline_id); ?>" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.9); display: flex; align-items: center; justify-content: center; z-index: 1000;">
-                <div class="tei-loading-content">
-                    <div class="tei-spinner"></div>
-                    <p><?php esc_html_e('Carregando linha do tempo...', 'tainacan-explorador'); ?></p>
-                </div>
-            </div>
-            
-            <script type="text/javascript">
-            (function() {
-                var timelineData = <?php echo wp_json_encode($timeline_data); ?>;
-                var timelineConfig = <?php echo wp_json_encode($config); ?>;
-                var timelineId = '<?php echo esc_js($timeline_id); ?>';
-                
-                function initTimeline() {
-                    if (typeof TL !== 'undefined' && TL.Timeline) {
-                        try {
-                            new TL.Timeline(timelineId, timelineData, timelineConfig);
-                            // Remove loading após criar timeline
-                            var loading = document.getElementById('tei-loading-' + timelineId);
-                            if (loading) {
-                                loading.style.display = 'none';
-                            }
-                        } catch(e) {
-                            console.error('Erro ao criar timeline:', e);
-                            var loading = document.getElementById('tei-loading-' + timelineId);
-                            if (loading) {
-                                loading.innerHTML = '<p>Erro ao carregar timeline</p>';
-                            }
-                        }
-                    } else {
-                        setTimeout(initTimeline, 100);
-                    }
-                }
-                
-                if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', initTimeline);
-                } else {
-                    initTimeline();
-                }
-            })();
-            </script>
-            <?php endif; ?>
-        </div>
-        
-        <style>
-        .tei-timeline-container {
-            margin-left: 0 !important;
-            margin-right: 0 !important;
-        }
-        @media (max-width: 100%) {
-            .tei-timeline-container {
-                width: 100vw !important;
-                margin: 0 !important;
-                left: 0 !important;
-                right: 0 !important;
-            }
-            .tl-timeline {
-                font-size: 14px !important;
-            }
-        }
-        </style>
-        <?php
-        
-        $output = ob_get_clean();
-        
-        // Remove quebras de linha extras que podem causar problemas JSON
-        $output = trim($output);
-        
-        return $output;
+ * Renderiza a timeline
+ */
+private function render_timeline($timeline_id, $timeline_data, $config, $atts) {
+    // Adiciona dados de teste se vazio
+    if (empty($timeline_data['events'])) {
+        $timeline_data = [
+            'title' => [
+                'text' => [
+                    'headline' => 'Timeline de Teste',
+                    'text' => 'Dados de teste - verifique o mapeamento dos campos'
+                ]
+            ],
+            'events' => [
+                [
+                    'start_date' => ['year' => 2024, 'month' => 1, 'day' => 15],
+                    'text' => [
+                        'headline' => 'Evento de Teste 1',
+                        'text' => 'Verifique se o campo de data está mapeado corretamente'
+                    ]
+                ],
+                [
+                    'start_date' => ['year' => 2024, 'month' => 6, 'day' => 20],
+                    'text' => [
+                        'headline' => 'Evento de Teste 2',
+                        'text' => 'Os itens da coleção devem ter datas válidas'
+                    ]
+                ]
+            ]
+        ];
     }
+    
+    ob_start();
+    ?>
+    <div class="tei-timeline-container <?php echo esc_attr($atts['class']); ?>" 
+         style="width: <?php echo esc_attr($atts['width']); ?>; 
+                height: <?php echo esc_attr($atts['height']); ?>; 
+                position: relative;">
+        
+        <div id="<?php echo esc_attr($timeline_id); ?>" 
+             style="width: 100%; height: 100%;">
+        </div>
+    </div>
+    
+    <script type="text/javascript">
+    (function() {
+        var timelineData = <?php echo wp_json_encode($timeline_data); ?>;
+        var timelineConfig = <?php echo wp_json_encode($config); ?>;
+        var timelineId = '<?php echo esc_js($timeline_id); ?>';
+        
+        console.log('Timeline Data:', timelineData);
+        console.log('Timeline Config:', timelineConfig);
+        console.log('Timeline ID:', timelineId);
+        
+        function initTimeline() {
+            // Verifica se elemento existe
+            var element = document.getElementById(timelineId);
+            if (!element) {
+                console.error('Timeline element not found:', timelineId);
+                return;
+            }
+            
+            // Verifica se TimelineJS está carregado
+            if (typeof TL === 'undefined' || !TL.Timeline) {
+                console.log('TimelineJS not loaded yet, retrying...');
+                setTimeout(initTimeline, 500);
+                return;
+            }
+            
+            try {
+                console.log('Creating timeline...');
+                var timeline = new TL.Timeline(timelineId, timelineData, timelineConfig);
+                console.log('Timeline created successfully');
+            } catch(e) {
+                console.error('Error creating timeline:', e);
+                element.innerHTML = '<div style="padding: 20px; color: red;">Erro ao criar timeline: ' + e.message + '</div>';
+            }
+        }
+        
+        // Aguarda DOM e TimelineJS
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                setTimeout(initTimeline, 100);
+            });
+        } else {
+            setTimeout(initTimeline, 100);
+        }
+    })();
+    </script>
+    
+    <style>
+    .tei-timeline-container {
+        min-height: 500px;
+        background: #f5f5f5;
+    }
+    
+    /* Força altura mínima para o TimelineJS */
+    #<?php echo esc_attr($timeline_id); ?> {
+        min-height: 500px !important;
+    }
+    
+    /* Fix para TimelineJS responsivo */
+    .tl-timeline {
+        height: 100% !important;
+    }
+    </style>
+    <?php
+    
+    return ob_get_clean();
+}
     
     /**
      * Renderiza mensagem de erro
