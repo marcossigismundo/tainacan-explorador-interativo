@@ -159,56 +159,64 @@ class TEI_Metadata_Mapper {
         return false;
     }
     
-    /**
-     * Obtém um mapeamento específico
-     * 
-     * @param int $collection_id ID da coleção
-     * @param string $mapping_type Tipo de mapeamento
-     * @return array|null
-     */
-    public static function get_mapping($collection_id, $mapping_type = null) {
-        global $wpdb;
-        
-        $table_name = $wpdb->prefix . self::$table_name;
-        
-        // Cache key
-        $cache_key = 'tei_mapping_' . $collection_id . '_' . $mapping_type;
-        $cached = wp_cache_get($cache_key, 'tei_mappings');
-        
-        if ($cached !== false) {
-            return $cached;
-        }
-        
-        if ($mapping_type) {
-            $query = $wpdb->prepare(
-                "SELECT * FROM $table_name WHERE collection_id = %d AND mapping_type = %s AND status = 'active'",
-                $collection_id,
-                $mapping_type
-            );
-        } else {
-            $query = $wpdb->prepare(
-                "SELECT * FROM $table_name WHERE collection_id = %d AND status = 'active'",
-                $collection_id
-            );
-        }
-        
-        $result = $wpdb->get_row($query, ARRAY_A);
-        
-        if ($result) {
-            // Decodifica JSON
-            $result['mapping_data'] = json_decode($result['mapping_data'], true);
-            $result['visualization_settings'] = json_decode($result['visualization_settings'], true);
-            $result['filter_rules'] = json_decode($result['filter_rules'], true);
-            
-            // Adiciona metadados adicionais
-            $result['author'] = get_userdata($result['created_by']);
-            
-            // Cache por 1 hora
-            wp_cache_set($cache_key, $result, 'tei_mappings', HOUR_IN_SECONDS);
-        }
-        
-        return $result;
+/**
+ * Obtém um mapeamento específico
+ * 
+ * @param int $collection_id ID da coleção
+ * @param string $mapping_type Tipo de mapeamento
+ * @return array|null
+ */
+public static function get_mapping($collection_id, $mapping_type = null) {
+    global $wpdb;
+    
+    $table_name = $wpdb->prefix . self::$table_name;
+    
+    // Cache key
+    $cache_key = 'tei_mapping_' . $collection_id . '_' . $mapping_type;
+    $cached = wp_cache_get($cache_key, 'tei_mappings');
+    
+    if ($cached !== false) {
+        return $cached;
     }
+    
+    if ($mapping_type) {
+        $query = $wpdb->prepare(
+            "SELECT * FROM $table_name WHERE collection_id = %d AND mapping_type = %s AND status = 'active'",
+            $collection_id,
+            $mapping_type
+        );
+    } else {
+        $query = $wpdb->prepare(
+            "SELECT * FROM $table_name WHERE collection_id = %d AND status = 'active'",
+            $collection_id
+        );
+    }
+    
+    $result = $wpdb->get_row($query, ARRAY_A);
+    
+    if ($result) {
+        // Decodifica JSON com verificação
+        $result['mapping_data'] = json_decode($result['mapping_data'], true) ?: [];
+        $result['visualization_settings'] = json_decode($result['visualization_settings'], true) ?: [];
+        
+        // Corrige o problema do filter_rules
+        if (!empty($result['filter_rules'])) {
+            $result['filter_rules'] = json_decode($result['filter_rules'], true) ?: [];
+        } else {
+            $result['filter_rules'] = [];
+        }
+        
+        // Adiciona metadados adicionais
+        if (!empty($result['created_by'])) {
+            $result['author'] = get_userdata($result['created_by']);
+        }
+        
+        // Cache por 1 hora
+        wp_cache_set($cache_key, $result, 'tei_mappings', HOUR_IN_SECONDS);
+    }
+    
+    return $result;
+}
     
     /**
      * Obtém todos os mapeamentos
@@ -467,3 +475,4 @@ class TEI_Metadata_Mapper {
         return self::save_mapping($original);
     }
 }
+
