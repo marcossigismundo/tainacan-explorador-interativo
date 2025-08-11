@@ -168,13 +168,8 @@ class TEI_Ajax_Handler {
                 
                 if (is_array($tainacan_metadata)) {
                     foreach ($tainacan_metadata as $meta) {
-                        // Pula metadados core (título e descrição são tratados separadamente)
-                        $metadata_type = $meta['metadata_type'] ?? '';
-                        
-                        if (strpos($metadata_type, 'Core_Title') !== false || 
-                            strpos($metadata_type, 'Core_Description') !== false) {
-                            continue;
-                        }
+                        // NÃO pula nenhum metadado - vamos listar TODOS
+                        // Cada metadado do Tainacan tem um ID único que usaremos
                         
                         // Extrai o nome do tipo de metadado
                         $type_name = 'text';
@@ -186,15 +181,18 @@ class TEI_Ajax_Handler {
                             $type_name = end($parts);
                         }
                         
+                        // Adiciona TODOS os metadados, incluindo os core
                         $metadata[] = [
-                            'id' => $meta['id'],
+                            'id' => $meta['id'],  // ID numérico do metadado
                             'name' => $meta['name'] ?? 'Sem nome',
                             'slug' => $meta['slug'] ?? '',
                             'type' => $type_name,
                             'required' => $meta['required'] ?? false,
                             'collection_key' => $meta['collection_key'] ?? false,
                             'multiple' => $meta['multiple'] ?? false,
-                            'cardinality' => $meta['cardinality'] ?? 1
+                            'cardinality' => $meta['cardinality'] ?? 1,
+                            'metadata_type' => $meta['metadata_type'] ?? '', // Tipo completo para debug
+                            'is_core' => strpos($meta['metadata_type'] ?? '', 'Core_') !== false
                         ];
                     }
                 }
@@ -208,12 +206,6 @@ class TEI_Ajax_Handler {
                 $tainacan_metadata = $metadata_repo->fetch_by_collection($collection, [], 'OBJECT');
                 
                 foreach ($tainacan_metadata as $meta) {
-                    // Pula metadados core
-                    if ($meta->get_metadata_type() === 'Tainacan\\Metadata_Types\\Core_Title' ||
-                        $meta->get_metadata_type() === 'Tainacan\\Metadata_Types\\Core_Description') {
-                        continue;
-                    }
-                    
                     $metadata[] = [
                         'id' => $meta->get_id(),
                         'name' => $meta->get_name(),
@@ -222,19 +214,25 @@ class TEI_Ajax_Handler {
                         'required' => $meta->get_required(),
                         'collection_key' => $meta->get_collection_key(),
                         'multiple' => $meta->get_multiple(),
-                        'cardinality' => $meta->get_cardinality()
+                        'cardinality' => $meta->get_cardinality(),
+                        'metadata_type' => $meta->get_metadata_type(),
+                        'is_core' => strpos($meta->get_metadata_type(), 'Core_') !== false
                     ];
                 }
             }
             
-            // Adiciona campos padrão sempre disponíveis no início
-            array_unshift($metadata, 
-                ['id' => 'title', 'name' => __('Título', 'tainacan-explorador'), 'type' => 'text', 'slug' => 'title'],
-                ['id' => 'description', 'name' => __('Descrição', 'tainacan-explorador'), 'type' => 'textarea', 'slug' => 'description'],
-                ['id' => 'thumbnail', 'name' => __('Miniatura', 'tainacan-explorador'), 'type' => 'image', 'slug' => 'thumbnail'],
-                ['id' => 'document', 'name' => __('Documento', 'tainacan-explorador'), 'type' => 'attachment', 'slug' => 'document'],
-                ['id' => '_attachments', 'name' => __('Anexos', 'tainacan-explorador'), 'type' => 'attachments', 'slug' => '_attachments']
-            );
+            // Adiciona campos especiais do Tainacan que sempre existem
+            // Estes são campos virtuais que podemos acessar diretamente
+            $special_fields = [
+                ['id' => 'title', 'name' => __('Título (Core)', 'tainacan-explorador'), 'type' => 'text', 'slug' => 'title', 'is_core' => true],
+                ['id' => 'description', 'name' => __('Descrição (Core)', 'tainacan-explorador'), 'type' => 'textarea', 'slug' => 'description', 'is_core' => true],
+                ['id' => 'thumbnail', 'name' => __('Miniatura', 'tainacan-explorador'), 'type' => 'image', 'slug' => 'thumbnail', 'is_core' => false],
+                ['id' => 'document', 'name' => __('Documento', 'tainacan-explorador'), 'type' => 'attachment', 'slug' => 'document', 'is_core' => false],
+                ['id' => '_attachments', 'name' => __('Anexos', 'tainacan-explorador'), 'type' => 'attachments', 'slug' => '_attachments', 'is_core' => false]
+            ];
+            
+            // Mescla campos especiais no início
+            $metadata = array_merge($special_fields, $metadata);
             
             // Obtém mapeamentos existentes
             $existing_mappings = [];
@@ -248,8 +246,9 @@ class TEI_Ajax_Handler {
             }
             
             // Debug - log para verificar o que está sendo retornado
-            error_log('TEI Debug - Metadata found: ' . count($metadata));
+            error_log('TEI Debug - Total metadata found: ' . count($metadata));
             error_log('TEI Debug - Collection ID: ' . $collection_id);
+            error_log('TEI Debug - Metadata types: ' . json_encode(array_column($metadata, 'type')));
             
             wp_send_json_success([
                 'metadata' => $metadata,
@@ -257,7 +256,8 @@ class TEI_Ajax_Handler {
                 'debug' => [
                     'collection_id' => $collection_id,
                     'metadata_count' => count($metadata),
-                    'has_mappings' => !empty($existing_mappings)
+                    'has_mappings' => !empty($existing_mappings),
+                    'metadata_types' => array_unique(array_column($metadata, 'type'))
                 ]
             ]);
             
@@ -292,11 +292,12 @@ class TEI_Ajax_Handler {
             return;
         }
         
-        // Sanitiza dados do mapeamento
+        // Sanitiza dados do mapeamento - PRESERVA IDs numéricos
         $sanitized_mapping = [];
         if (is_array($mapping_data)) {
             foreach ($mapping_data as $key => $value) {
-                $sanitized_mapping[sanitize_key($key)] = $value; // Preserva IDs numéricos
+                // Preserva o valor original (ID numérico ou string)
+                $sanitized_mapping[sanitize_key($key)] = $value;
             }
         }
         
@@ -314,7 +315,7 @@ class TEI_Ajax_Handler {
             foreach ($filter_rules as $rule) {
                 if (is_array($rule)) {
                     $sanitized_filters[] = [
-                        'metadatum' => sanitize_text_field($rule['metadatum'] ?? ''),
+                        'metadatum' => $rule['metadatum'] ?? '', // Preserva ID
                         'operator' => sanitize_text_field($rule['operator'] ?? '='),
                         'value' => sanitize_text_field($rule['value'] ?? '')
                     ];
@@ -347,9 +348,16 @@ class TEI_Ajax_Handler {
             TEI_Cache_Manager::clear_collection_cache($collection_id);
         }
         
+        // Debug do que foi salvo
+        error_log('TEI Debug - Mapping saved: ' . json_encode($sanitized_mapping));
+        
         wp_send_json_success([
             'message' => __('Mapeamento salvo com sucesso!', 'tainacan-explorador'),
-            'mapping_id' => $result
+            'mapping_id' => $result,
+            'debug' => [
+                'mapping_data' => $sanitized_mapping,
+                'filter_rules' => $sanitized_filters
+            ]
         ]);
     }
     
