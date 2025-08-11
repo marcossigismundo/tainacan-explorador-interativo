@@ -208,91 +208,132 @@ class TEI_API_Handler {
         return $metadata;
     }
     
-    /**
-     * Normaliza estrutura do item do Tainacan
-     * 
-     * @param array $item Item bruto da API
-     * @param int $collection_id ID da coleção
-     * @return array
-     */
-    private function normalize_item($item, $collection_id) {
-        $normalized = [
-            'id' => $item['id'] ?? 0,
-            'title' => '',
-            'description' => '',
-            'url' => '',
-            'thumbnail' => [],
-            'document' => '',
-            '_attachments' => [],
-            'metadata' => []
-        ];
+  /**
+ * Normaliza estrutura do item do Tainacan
+ * CORREÇÃO: Processa corretamente diferentes estruturas de metadados
+ * 
+ * @param array $item Item bruto da API
+ * @param int $collection_id ID da coleção
+ * @return array
+ */
+private function normalize_item($item, $collection_id) {
+    $normalized = [
+        'id' => $item['id'] ?? 0,
+        'title' => '',
+        'description' => '',
+        'url' => '',
+        'thumbnail' => [],
+        'document' => '',
+        '_attachments' => [],
+        'metadata' => []
+    ];
+    
+    // Debug
+    error_log('TEI Debug - Normalizing item: ' . $item['id']);
+    error_log('TEI Debug - Item structure keys: ' . json_encode(array_keys($item)));
+    
+    // Título - pode estar em diferentes lugares
+    if (isset($item['title']['rendered'])) {
+        $normalized['title'] = $item['title']['rendered'];
+    } elseif (isset($item['title'])) {
+        $normalized['title'] = is_array($item['title']) ? ($item['title']['value'] ?? '') : $item['title'];
+    }
+    
+    // Descrição
+    if (isset($item['description']['rendered'])) {
+        $normalized['description'] = $item['description']['rendered'];
+    } elseif (isset($item['description'])) {
+        $normalized['description'] = is_array($item['description']) ? ($item['description']['value'] ?? '') : $item['description'];
+    }
+    
+    // URL do item
+    if (isset($item['url'])) {
+        $normalized['url'] = $item['url'];
+    } elseif (isset($item['link'])) {
+        $normalized['url'] = $item['link'];
+    } else {
+        // Constrói URL padrão do Tainacan
+        $normalized['url'] = home_url("/colecoes/{$collection_id}/items/{$item['id']}");
+    }
+    
+    // Thumbnail - estrutura do Tainacan
+    if (isset($item['thumbnail'])) {
+        $normalized['thumbnail'] = $item['thumbnail'];
+    } elseif (isset($item['_thumbnail_id'])) {
+        $normalized['thumbnail'] = $this->get_thumbnail_sizes($item['_thumbnail_id']);
+    }
+    
+    // Document - documento principal do item
+    if (isset($item['document'])) {
+        $normalized['document'] = $item['document'];
+    }
+    
+    // Attachments - anexos do item
+    if (isset($item['_attachments'])) {
+        $normalized['_attachments'] = $item['_attachments'];
+    }
+    
+    // CORREÇÃO: Processa metadados mantendo IDs numéricos como chaves
+    if (isset($item['metadata']) && is_array($item['metadata'])) {
+        error_log('TEI Debug - Processing metadata, type: ' . gettype($item['metadata']));
+        error_log('TEI Debug - Metadata keys: ' . json_encode(array_keys($item['metadata'])));
         
-        // Título - pode estar em diferentes lugares
-        if (isset($item['title']['rendered'])) {
-            $normalized['title'] = $item['title']['rendered'];
-        } elseif (isset($item['title'])) {
-            $normalized['title'] = is_array($item['title']) ? $item['title']['value'] ?? '' : $item['title'];
-        }
+        // Verifica se metadata é array associativo (chaves são IDs) ou array indexado
+        $is_associative = array_keys($item['metadata']) !== range(0, count($item['metadata']) - 1);
         
-        // Descrição
-        if (isset($item['description']['rendered'])) {
-            $normalized['description'] = $item['description']['rendered'];
-        } elseif (isset($item['description'])) {
-            $normalized['description'] = is_array($item['description']) ? $item['description']['value'] ?? '' : $item['description'];
-        }
-        
-        // URL do item
-        if (isset($item['url'])) {
-            $normalized['url'] = $item['url'];
-        } elseif (isset($item['link'])) {
-            $normalized['url'] = $item['link'];
-        } else {
-            // Constrói URL padrão do Tainacan
-            $normalized['url'] = home_url("/colecoes/{$collection_id}/items/{$item['id']}");
-        }
-        
-        // Thumbnail - estrutura do Tainacan
-        if (isset($item['thumbnail'])) {
-            $normalized['thumbnail'] = $item['thumbnail'];
-        } elseif (isset($item['_thumbnail_id'])) {
-            $normalized['thumbnail'] = $this->get_thumbnail_sizes($item['_thumbnail_id']);
-        }
-        
-        // Document - documento principal do item
-        if (isset($item['document'])) {
-            $normalized['document'] = $item['document'];
-        }
-        
-        // Attachments - anexos do item
-        if (isset($item['_attachments'])) {
-            $normalized['_attachments'] = $item['_attachments'];
-        }
-        
-        // Metadados - estrutura específica do Tainacan
-        if (isset($item['metadata']) && is_array($item['metadata'])) {
-            // O Tainacan pode retornar metadados como array ou objeto
-            foreach ($item['metadata'] as $key => $meta) {
+        if ($is_associative) {
+            // Metadata já está indexado por ID
+            foreach ($item['metadata'] as $meta_id => $meta) {
                 if (is_array($meta)) {
-                    // Estrutura típica do Tainacan v2
-                    $meta_id = $meta['metadatum_id'] ?? $meta['metadatum']['id'] ?? $key;
                     $normalized['metadata'][$meta_id] = [
                         'id' => $meta_id,
-                        'name' => $meta['metadatum']['name'] ?? '',
+                        'name' => $meta['name'] ?? $meta['metadatum']['name'] ?? '',
                         'value' => $meta['value'] ?? '',
                         'value_as_html' => $meta['value_as_html'] ?? '',
                         'value_as_string' => $meta['value_as_string'] ?? ''
                     ];
                 } else {
-                    // Formato simples
-                    $normalized['metadata'][$key] = [
+                    // Valor simples
+                    $normalized['metadata'][$meta_id] = [
+                        'id' => $meta_id,
                         'value' => $meta
                     ];
                 }
             }
+        } else {
+            // Metadata é array de objetos
+            foreach ($item['metadata'] as $meta) {
+                if (is_array($meta)) {
+                    // Extrai o ID do metadado
+                    $meta_id = $meta['metadatum_id'] ?? 
+                              $meta['metadatum']['id'] ?? 
+                              $meta['id'] ?? 
+                              null;
+                    
+                    if ($meta_id) {
+                        // Usa o ID como chave
+                        $normalized['metadata'][$meta_id] = [
+                            'id' => $meta_id,
+                            'name' => $meta['metadatum']['name'] ?? $meta['name'] ?? '',
+                            'value' => $meta['value'] ?? '',
+                            'value_as_html' => $meta['value_as_html'] ?? '',
+                            'value_as_string' => $meta['value_as_string'] ?? ''
+                        ];
+                        
+                        // Debug
+                        error_log('TEI Debug - Added metadata ID ' . $meta_id . ' with value: ' . 
+                                 json_encode($meta['value'] ?? ''));
+                    }
+                }
+            }
         }
-        
-        return $normalized;
     }
+    
+    // Debug final
+    error_log('TEI Debug - Normalized metadata IDs: ' . json_encode(array_keys($normalized['metadata'])));
+    
+    return $normalized;
+}
     
     /**
      * Obtém tamanhos de thumbnail
