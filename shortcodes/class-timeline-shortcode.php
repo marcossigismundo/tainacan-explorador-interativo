@@ -318,45 +318,101 @@ class TEI_Timeline_Shortcode {
         return $description;
     }
     
-    /**
-     * Obtém valor de um campo
-     */
-    private function get_field_value($item, $field_id, $default = '') {
-        if (empty($field_id)) {
-            return $default;
+/**
+ * Obtém valor de um campo
+ * CORREÇÃO: Suporta tanto IDs numéricos quanto strings para campos
+ */
+private function get_field_value($item, $field_id, $default = '') {
+    if (empty($field_id)) {
+        return $default;
+    }
+    
+    // Debug
+    error_log('TEI Debug - Getting field: ' . $field_id . ' from item: ' . $item['id']);
+    
+    // Para campos especiais (strings)
+    if ($field_id === 'title' && isset($item['title'])) {
+        return is_array($item['title']) ? ($item['title']['rendered'] ?? $item['title']) : $item['title'];
+    }
+    
+    if ($field_id === 'description' && isset($item['description'])) {
+        return is_array($item['description']) ? ($item['description']['rendered'] ?? $item['description']) : $item['description'];
+    }
+    
+    if ($field_id === 'thumbnail' && isset($item['thumbnail'])) {
+        return $item['thumbnail'];
+    }
+    
+    if ($field_id === 'document' && isset($item['document'])) {
+        return $item['document'];
+    }
+    
+    if ($field_id === '_attachments' && isset($item['_attachments'])) {
+        return $item['_attachments'];
+    }
+    
+    // Para metadados do Tainacan (usando ID numérico)
+    if (is_numeric($field_id) && isset($item['metadata'])) {
+        // Debug da estrutura de metadata
+        error_log('TEI Debug - Item metadata structure: ' . json_encode(array_keys($item['metadata'])));
+        
+        // Tenta diferentes formas de acessar o metadado
+        
+        // 1. Acesso direto por ID como chave
+        if (isset($item['metadata'][$field_id])) {
+            $meta = $item['metadata'][$field_id];
+            if (is_array($meta)) {
+                return $meta['value'] ?? $meta['value_as_string'] ?? $meta['value_as_html'] ?? '';
+            }
+            return $meta;
         }
         
-        // Para campos especiais
-        if ($field_id === 'title' && isset($item['title'])) {
-            return is_array($item['title']) ? $item['title']['rendered'] : $item['title'];
-        }
-        
-        if ($field_id === 'description' && isset($item['description'])) {
-            return is_array($item['description']) ? $item['description']['rendered'] : $item['description'];
-        }
-        
-        if ($field_id === 'thumbnail' && isset($item['thumbnail'])) {
-            return $item['thumbnail'];
-        }
-        
-        // Para metadados do Tainacan (usando ID numérico)
-        if (is_numeric($field_id) && isset($item['metadata'])) {
-            foreach ($item['metadata'] as $meta) {
-                // Verifica diferentes estruturas possíveis
-                $meta_id = $meta['metadatum_id'] ?? $meta['metadatum']['id'] ?? $meta['id'] ?? null;
-                if ($meta_id == $field_id) {
-                    return $meta['value'] ?? $meta['value_as_string'] ?? '';
+        // 2. Busca no array de metadados (estrutura de lista)
+        if (is_array($item['metadata'])) {
+            foreach ($item['metadata'] as $key => $meta) {
+                // Se a chave é o próprio ID
+                if ($key == $field_id) {
+                    if (is_array($meta)) {
+                        return $meta['value'] ?? $meta['value_as_string'] ?? '';
+                    }
+                    return $meta;
+                }
+                
+                // Se é um array com metadatum_id
+                if (is_array($meta)) {
+                    $meta_id = $meta['metadatum_id'] ?? 
+                              $meta['metadatum']['id'] ?? 
+                              $meta['id'] ?? 
+                              null;
+                    
+                    if ($meta_id == $field_id) {
+                        // Extrai o valor
+                        $value = $meta['value'] ?? 
+                                $meta['value_as_string'] ?? 
+                                $meta['value_as_html'] ?? '';
+                        
+                        // Se for array, pega o primeiro elemento
+                        if (is_array($value) && !empty($value)) {
+                            return reset($value);
+                        }
+                        
+                        return $value;
+                    }
                 }
             }
         }
-        
-        // Tenta direto no item
-        if (isset($item[$field_id])) {
-            return $item[$field_id];
-        }
-        
-        return $default;
     }
+    
+    // Tenta acessar diretamente no item (para campos que podem estar no nível raiz)
+    if (isset($item[$field_id])) {
+        return $item[$field_id];
+    }
+    
+    // Debug se não encontrou
+    error_log('TEI Debug - Field not found: ' . $field_id . ' in item ' . $item['id']);
+    
+    return $default;
+}
     
     /**
      * Obtém URL da imagem em alta resolução
