@@ -59,83 +59,83 @@ class TEI_Timeline_Shortcode {
         return $this->render_timeline($atts['id'], $timeline_data, $timeline_config, $atts);
     }
     
-/**
- * Obtém dados da timeline
- */
-private function get_timeline_data($collection_id, $mapping, $atts) {
-    // Verifica cache
-    if ($atts['cache']) {
-        $cache_key = 'tei_timeline_data_' . $collection_id . '_' . md5(serialize($atts) . serialize($mapping['filter_rules'] ?? []));
-        $cached_data = TEI_Cache_Manager::get($cache_key);
+    /**
+     * Obtém dados da timeline
+     */
+    private function get_timeline_data($collection_id, $mapping, $atts) {
+        // Verifica cache
+        if ($atts['cache']) {
+            $cache_key = 'tei_timeline_data_' . $collection_id . '_' . md5(serialize($atts) . serialize($mapping['filter_rules'] ?? []));
+            $cached_data = TEI_Cache_Manager::get($cache_key);
+            
+            if ($cached_data !== false) {
+                return $cached_data;
+            }
+        }
         
-        if ($cached_data !== false) {
-            return $cached_data;
+        // Prepara parâmetros da API
+        $api_params = [
+            'perpage' => 200,
+            'paged' => 1
+        ];
+        
+        // Aplica filtros configurados
+        if (!empty($mapping['filter_rules'])) {
+            $api_params = TEI_Metadata_Mapper::apply_filter_rules($api_params, $mapping['filter_rules']);
         }
-    }
-    
-    // Prepara parâmetros da API
-    $api_params = [
-        'perpage' => 200,
-        'paged' => 1
-    ];
-    
-    // Aplica filtros configurados
-    if (!empty($mapping['filter_rules'])) {
-        $api_params = TEI_Metadata_Mapper::apply_filter_rules($api_params, $mapping['filter_rules']);
-    }
-    
-    // Adiciona filtro de data se especificado
-    if (!empty($atts['start_date']) || !empty($atts['end_date'])) {
-        $date_field = $mapping['mapping_data']['date'] ?? '';
-        if ($date_field && is_numeric($date_field)) {
-            $metaquery = isset($api_params['metaquery']) ? $api_params['metaquery'] : [];
-            
-            if (!empty($atts['start_date'])) {
-                $metaquery[] = [
-                    'key' => $date_field,
-                    'value' => TEI_Sanitizer::sanitize($atts['start_date'], 'date'),
-                    'compare' => '>=',
-                    'type' => 'DATE'
-                ];
-            }
-            
-            if (!empty($atts['end_date'])) {
-                $metaquery[] = [
-                    'key' => $date_field,
-                    'value' => TEI_Sanitizer::sanitize($atts['end_date'], 'date'),
-                    'compare' => '<=',
-                    'type' => 'DATE'
-                ];
-            }
-            
-            if (!empty($metaquery)) {
-                $api_params['metaquery'] = $metaquery;
+        
+        // Adiciona filtro de data se especificado
+        if (!empty($atts['start_date']) || !empty($atts['end_date'])) {
+            $date_field = $mapping['mapping_data']['date'] ?? '';
+            if ($date_field && is_numeric($date_field)) {
+                $metaquery = isset($api_params['metaquery']) ? $api_params['metaquery'] : [];
+                
+                if (!empty($atts['start_date'])) {
+                    $metaquery[] = [
+                        'key' => $date_field,
+                        'value' => TEI_Sanitizer::sanitize($atts['start_date'], 'date'),
+                        'compare' => '>=',
+                        'type' => 'DATE'
+                    ];
+                }
+                
+                if (!empty($atts['end_date'])) {
+                    $metaquery[] = [
+                        'key' => $date_field,
+                        'value' => TEI_Sanitizer::sanitize($atts['end_date'], 'date'),
+                        'compare' => '<=',
+                        'type' => 'DATE'
+                    ];
+                }
+                
+                if (!empty($metaquery)) {
+                    $api_params['metaquery'] = $metaquery;
+                }
             }
         }
+        
+        // Usa API Handler para buscar itens
+        $api_handler = new TEI_API_Handler();
+        $response = $api_handler->get_collection_items($collection_id, $api_params);
+        
+        if (is_wp_error($response)) {
+            error_log('TEI Error getting timeline data: ' . $response->get_error_message());
+            return $response;
+        }
+        
+        // Debug
+        error_log('TEI Debug - Timeline items fetched: ' . count($response['items'] ?? []));
+        
+        // Processa dados para o formato da timeline
+        $timeline_data = $this->process_timeline_data($response, $mapping);
+        
+        // Salva no cache
+        if ($atts['cache'] && !empty($timeline_data['events'])) {
+            TEI_Cache_Manager::set($cache_key, $timeline_data, HOUR_IN_SECONDS);
+        }
+        
+        return $timeline_data;
     }
-    
-    // Usa API Handler para buscar itens
-    $api_handler = new TEI_API_Handler();
-    $response = $api_handler->get_collection_items($collection_id, $api_params);
-    
-    if (is_wp_error($response)) {
-        error_log('TEI Error getting timeline data: ' . $response->get_error_message());
-        return $response;
-    }
-    
-    // Debug
-    error_log('TEI Debug - Timeline items fetched: ' . count($response['items'] ?? []));
-    
-    // Processa dados para o formato da timeline
-    $timeline_data = $this->process_timeline_data($response, $mapping);
-    
-    // Salva no cache
-    if ($atts['cache'] && !empty($timeline_data['events'])) {
-        TEI_Cache_Manager::set($cache_key, $timeline_data, HOUR_IN_SECONDS);
-    }
-    
-    return $timeline_data;
-}
     
     /**
      * Processa dados para o formato TimelineJS
@@ -159,24 +159,8 @@ private function get_timeline_data($collection_id, $mapping, $atts) {
         $link_field = $mapping['mapping_data']['link'] ?? '';
         
         foreach ($response['items'] as $item) {
-            // Obtém data - tenta diferentes formas
-            $date_value = null;
-            
-            // Se for ID numérico, busca no metadata
-            if (is_numeric($date_field) && isset($item['metadata'])) {
-                foreach ($item['metadata'] as $meta) {
-                    // Verifica diferentes estruturas possíveis
-                    $meta_id = $meta['metadatum_id'] ?? $meta['metadatum']['id'] ?? $meta['id'] ?? null;
-                    if ($meta_id == $date_field) {
-                        $date_value = $meta['value'] ?? $meta['value_as_string'] ?? '';
-                        break;
-                    }
-                }
-            }
-            // Se for string, tenta como nome do campo
-            elseif (isset($item[$date_field])) {
-                $date_value = $item[$date_field];
-            }
+            // Obtém data
+            $date_value = $this->get_field_value($item, $date_field);
             
             if (empty($date_value)) {
                 continue;
@@ -198,7 +182,7 @@ private function get_timeline_data($collection_id, $mapping, $atts) {
                 ]
             ];
             
-            // Obtém imagem em alta resolução
+            // Obtém imagem
             $image_url = $this->get_image_url($item, $image_field);
             if ($image_url) {
                 $event['media'] = [
@@ -244,35 +228,46 @@ private function get_timeline_data($collection_id, $mapping, $atts) {
      * Parse de data
      */
     private function parse_date($date_value) {
-        $sanitized_date = TEI_Sanitizer::sanitize($date_value, 'date');
+        // Remove espaços e caracteres invisíveis
+        $date_value = trim($date_value);
         
-        if (empty($sanitized_date)) {
-            // Tenta apenas ano
-            if (preg_match('/^\d{4}$/', $date_value)) {
-                return [
-                    'year' => intval($date_value)
-                ];
-            }
-            return null;
-        }
-        
-        $timestamp = strtotime($sanitized_date);
-        
-        if ($timestamp === false) {
-            return null;
-        }
-        
-        $date_parts = [
-            'year' => intval(date('Y', $timestamp))
+        // Tenta diferentes formatos de data
+        $formats = [
+            'Y-m-d',
+            'd/m/Y',
+            'm/d/Y',
+            'Y',
+            'd-m-Y',
+            'Y/m/d'
         ];
         
-        // Adiciona mês e dia se não for apenas ano
-        if (!preg_match('/^\d{4}$/', $date_value)) {
-            $date_parts['month'] = intval(date('n', $timestamp));
-            $date_parts['day'] = intval(date('j', $timestamp));
+        foreach ($formats as $format) {
+            $date = DateTime::createFromFormat($format, $date_value);
+            if ($date !== false) {
+                return [
+                    'year' => intval($date->format('Y')),
+                    'month' => intval($date->format('n')),
+                    'day' => intval($date->format('j'))
+                ];
+            }
         }
         
-        return $date_parts;
+        // Tenta strtotime como fallback
+        $timestamp = strtotime($date_value);
+        if ($timestamp !== false && $timestamp > 0) {
+            return [
+                'year' => intval(date('Y', $timestamp)),
+                'month' => intval(date('n', $timestamp)),
+                'day' => intval(date('j', $timestamp))
+            ];
+        }
+        
+        // Tenta apenas ano
+        if (preg_match('/^(\d{4})$/', $date_value, $matches)) {
+            return ['year' => intval($matches[1])];
+        }
+        
+        return null;
     }
     
     /**
@@ -302,185 +297,77 @@ private function get_timeline_data($collection_id, $mapping, $atts) {
         return $description;
     }
     
-/**
- * Obtém valor de um campo
- * CORREÇÃO: Suporta tanto IDs numéricos quanto strings para campos
- */
-private function get_field_value($item, $field_id, $default = '') {
-    if (empty($field_id)) {
-        return $default;
-    }
-    
-    // Debug
-    error_log('TEI Debug - Getting field: ' . $field_id . ' from item: ' . $item['id']);
-    
-    // Para campos especiais (strings)
-    if ($field_id === 'title' && isset($item['title'])) {
-        return is_array($item['title']) ? ($item['title']['rendered'] ?? $item['title']) : $item['title'];
-    }
-    
-    if ($field_id === 'description' && isset($item['description'])) {
-        return is_array($item['description']) ? ($item['description']['rendered'] ?? $item['description']) : $item['description'];
-    }
-    
-    if ($field_id === 'thumbnail' && isset($item['thumbnail'])) {
-        return $item['thumbnail'];
-    }
-    
-    if ($field_id === 'document' && isset($item['document'])) {
-        return $item['document'];
-    }
-    
-    if ($field_id === '_attachments' && isset($item['_attachments'])) {
-        return $item['_attachments'];
-    }
-    
-    // Para metadados do Tainacan (usando ID numérico)
-    if (is_numeric($field_id) && isset($item['metadata'])) {
-        // Debug da estrutura de metadata
-        error_log('TEI Debug - Item metadata structure: ' . json_encode(array_keys($item['metadata'])));
+    /**
+     * Obtém valor de um campo
+     */
+    private function get_field_value($item, $field_id, $default = '') {
+        if (empty($field_id)) {
+            return $default;
+        }
         
-        // Tenta diferentes formas de acessar o metadado
+        // Campos especiais
+        if (!is_numeric($field_id)) {
+            if ($field_id === 'title' && isset($item['title'])) {
+                return is_array($item['title']) ? ($item['title']['rendered'] ?? $item['title']) : $item['title'];
+            }
+            
+            if ($field_id === 'description' && isset($item['description'])) {
+                return is_array($item['description']) ? ($item['description']['rendered'] ?? $item['description']) : $item['description'];
+            }
+            
+            if (isset($item[$field_id])) {
+                return $item[$field_id];
+            }
+        }
         
-        // 1. Acesso direto por ID como chave
-        if (isset($item['metadata'][$field_id])) {
+        // Metadados por ID numérico
+        if (is_numeric($field_id) && isset($item['metadata'][$field_id])) {
             $meta = $item['metadata'][$field_id];
             if (is_array($meta)) {
-                return $meta['value'] ?? $meta['value_as_string'] ?? $meta['value_as_html'] ?? '';
+                $value = $meta['value'] ?? $meta['value_as_string'] ?? '';
+                return is_array($value) && !empty($value) ? reset($value) : $value;
             }
             return $meta;
         }
         
-        // 2. Busca no array de metadados (estrutura de lista)
-        if (is_array($item['metadata'])) {
-            foreach ($item['metadata'] as $key => $meta) {
-                // Se a chave é o próprio ID
-                if ($key == $field_id) {
-                    if (is_array($meta)) {
-                        return $meta['value'] ?? $meta['value_as_string'] ?? '';
-                    }
-                    return $meta;
-                }
-                
-                // Se é um array com metadatum_id
-                if (is_array($meta)) {
-                    $meta_id = $meta['metadatum_id'] ?? 
-                              $meta['metadatum']['id'] ?? 
-                              $meta['id'] ?? 
-                              null;
-                    
-                    if ($meta_id == $field_id) {
-                        // Extrai o valor
-                        $value = $meta['value'] ?? 
-                                $meta['value_as_string'] ?? 
-                                $meta['value_as_html'] ?? '';
-                        
-                        // Se for array, pega o primeiro elemento
-                        if (is_array($value) && !empty($value)) {
-                            return reset($value);
-                        }
-                        
-                        return $value;
-                    }
-                }
-            }
-        }
+        return $default;
     }
-    
-    // Tenta acessar diretamente no item (para campos que podem estar no nível raiz)
-    if (isset($item[$field_id])) {
-        return $item[$field_id];
-    }
-    
-    // Debug se não encontrou
-    error_log('TEI Debug - Field not found: ' . $field_id . ' in item ' . $item['id']);
-    
-    return $default;
-}
     
     /**
-     * Obtém URL da imagem em alta resolução
+     * Obtém URL da imagem
      */
     private function get_image_url($item, $image_field) {
-        // Se houver campo de imagem especificado
         if (!empty($image_field)) {
             $image_value = $this->get_field_value($item, $image_field);
             if (!empty($image_value)) {
                 if (is_numeric($image_value)) {
-                    // Tenta obter imagem em tamanho full primeiro
-                    $image_url = wp_get_attachment_image_url($image_value, 'full');
-                    if ($image_url) {
-                        return $image_url;
-                    }
-                    // Fallback para large
                     $image_url = wp_get_attachment_image_url($image_value, 'large');
-                    if ($image_url) {
-                        return $image_url;
-                    }
+                    if ($image_url) return $image_url;
                 } elseif (filter_var($image_value, FILTER_VALIDATE_URL)) {
-                    return TEI_Sanitizer::escape($image_value, 'url');
+                    return $image_value;
                 }
             }
         }
         
-        // Busca anexos do item
-        if (isset($item['_attachments']) && is_array($item['_attachments'])) {
-            foreach ($item['_attachments'] as $attachment) {
-                // Pega o primeiro anexo de imagem
-                if (isset($attachment['mime_type']) && strpos($attachment['mime_type'], 'image') === 0) {
-                    if (isset($attachment['url'])) {
-                        return $attachment['url'];
-                    }
-                }
-            }
+        // Fallback para document
+        if (!empty($item['document']) && filter_var($item['document'], FILTER_VALIDATE_URL)) {
+            return $item['document'];
         }
         
-        // Tenta pegar do document se disponível
-        if (isset($item['document']) && !empty($item['document'])) {
-            if (filter_var($item['document'], FILTER_VALIDATE_URL)) {
-                return $item['document'];
-            } elseif (is_numeric($item['document'])) {
-                $doc_url = wp_get_attachment_url($item['document']);
-                if ($doc_url) {
-                    return $doc_url;
-                }
-            }
-        }
-        
-        // Fallback para thumbnail em alta resolução
-        if (isset($item['thumbnail'])) {
-            // Tenta pegar o maior tamanho disponível
-            $sizes = ['full', 'tainacan-large', 'large', 'tainacan-medium-full', 'medium_large', 'medium'];
-            foreach ($sizes as $size) {
-                if (isset($item['thumbnail'][$size])) {
-                    if (is_array($item['thumbnail'][$size]) && isset($item['thumbnail'][$size][0])) {
-                        return $item['thumbnail'][$size][0];
-                    } elseif (is_string($item['thumbnail'][$size])) {
-                        return $item['thumbnail'][$size];
-                    }
-                }
-            }
+        // Fallback para thumbnail
+        if (isset($item['thumbnail']['large'])) {
+            return $item['thumbnail']['large'];
         }
         
         return '';
     }
     
     /**
-     * Obtém URL do thumbnail (para preview)
+     * Obtém URL do thumbnail
      */
     private function get_thumbnail_url($item) {
-        if (isset($item['thumbnail'])) {
-            // Pega thumbnail pequeno para preview
-            $sizes = ['thumbnail', 'tainacan-small', 'medium'];
-            foreach ($sizes as $size) {
-                if (isset($item['thumbnail'][$size])) {
-                    if (is_array($item['thumbnail'][$size]) && isset($item['thumbnail'][$size][0])) {
-                        return $item['thumbnail'][$size][0];
-                    } elseif (is_string($item['thumbnail'][$size])) {
-                        return $item['thumbnail'][$size];
-                    }
-                }
-            }
+        if (isset($item['thumbnail']['thumbnail'])) {
+            return $item['thumbnail']['thumbnail'];
         }
         return '';
     }
@@ -496,144 +383,92 @@ private function get_field_value($item, $field_id, $default = '') {
             'language' => substr($atts['language'], 0, 2),
             'timenav_position' => $atts['timenav_position'],
             'hash_bookmark' => $atts['hash_bookmark'],
-            'debug' => $atts['debug'],
-            'duration' => intval($settings['duration'] ?? 1000),
-            'ease' => $settings['ease'] ?? 'easeInOutQuint',
-            'dragging' => $settings['dragging'] ?? true,
-            'trackResize' => true,
-            'slide_padding_lr' => intval($settings['slide_padding'] ?? 100),
-            'slide_default_fade' => $settings['slide_fade'] ?? '0%',
-            'marker' => [
-                'line_color' => $settings['marker_color'] ?? '#da2121',
-                'line_color_inactive' => $settings['marker_inactive'] ?? '#CCC'
-            ]
+            'debug' => $atts['debug']
         ];
-        
-        // Adiciona fontes customizadas se configuradas
-        if (!empty($settings['font_headline'])) {
-            $config['font'] = $settings['font_headline'];
-        }
         
         return apply_filters('tei_timeline_config', $config, $atts, $mapping);
     }
     
     /**
- * Renderiza a timeline
- */
-private function render_timeline($timeline_id, $timeline_data, $config, $atts) {
-    // Adiciona dados de teste se vazio
-    if (empty($timeline_data['events'])) {
-        $timeline_data = [
-            'title' => [
-                'text' => [
-                    'headline' => 'Timeline de Teste',
-                    'text' => 'Dados de teste - verifique o mapeamento dos campos'
-                ]
-            ],
-            'events' => [
-                [
-                    'start_date' => ['year' => 2024, 'month' => 1, 'day' => 15],
+     * Renderiza a timeline
+     */
+    private function render_timeline($timeline_id, $timeline_data, $config, $atts) {
+        // Adiciona dados de teste se vazio
+        if (empty($timeline_data['events'])) {
+            $timeline_data = [
+                'title' => [
                     'text' => [
-                        'headline' => 'Evento de Teste 1',
-                        'text' => 'Verifique se o campo de data está mapeado corretamente'
+                        'headline' => 'Timeline - Sem dados',
+                        'text' => 'Nenhum item com data válida foi encontrado. Verifique o mapeamento.'
                     ]
                 ],
-                [
-                    'start_date' => ['year' => 2024, 'month' => 6, 'day' => 20],
-                    'text' => [
-                        'headline' => 'Evento de Teste 2',
-                        'text' => 'Os itens da coleção devem ter datas válidas'
+                'events' => [
+                    [
+                        'start_date' => ['year' => 2024, 'month' => 1, 'day' => 1],
+                        'text' => [
+                            'headline' => 'Exemplo de Evento',
+                            'text' => 'Configure o campo de data corretamente no admin.'
+                        ]
                     ]
                 ]
-            ]
-        ];
-    }
-    
-    ob_start();
-    ?>
-    <div class="tei-timeline-container <?php echo esc_attr($atts['class']); ?>" 
-         style="width: <?php echo esc_attr($atts['width']); ?>; 
-                height: <?php echo esc_attr($atts['height']); ?>; 
-                position: relative;">
+            ];
+        }
         
-        <div id="<?php echo esc_attr($timeline_id); ?>" 
-             style="width: 100%; height: 100%;">
+        ob_start();
+        ?>
+        <div class="tei-timeline-wrapper" style="width: <?php echo esc_attr($atts['width']); ?>;">
+            <div id="<?php echo esc_attr($timeline_id); ?>" 
+                 style="width: 100%; height: <?php echo esc_attr($atts['height']); ?>;">
+            </div>
         </div>
-    </div>
-    
-    <script type="text/javascript">
-    (function() {
-        var timelineData = <?php echo wp_json_encode($timeline_data); ?>;
-        var timelineConfig = <?php echo wp_json_encode($config); ?>;
-        var timelineId = '<?php echo esc_js($timeline_id); ?>';
         
-        console.log('Timeline Data:', timelineData);
-        console.log('Timeline Config:', timelineConfig);
-        console.log('Timeline ID:', timelineId);
-        
-        function initTimeline() {
-            // Verifica se elemento existe
-            var element = document.getElementById(timelineId);
-            if (!element) {
-                console.error('Timeline element not found:', timelineId);
-                return;
+        <script type="text/javascript">
+        (function() {
+            var timelineData = <?php echo wp_json_encode($timeline_data); ?>;
+            var timelineConfig = <?php echo wp_json_encode($config); ?>;
+            var timelineId = '<?php echo esc_js($timeline_id); ?>';
+            
+            function initTimeline() {
+                if (typeof TL === 'undefined' || !TL.Timeline) {
+                    setTimeout(initTimeline, 100);
+                    return;
+                }
+                
+                try {
+                    new TL.Timeline(timelineId, timelineData, timelineConfig);
+                } catch(e) {
+                    console.error('Timeline error:', e);
+                    document.getElementById(timelineId).innerHTML = 
+                        '<div style="padding: 20px; text-align: center; color: #666;">' +
+                        'Erro ao carregar timeline: ' + e.message + '</div>';
+                }
             }
             
-            // Verifica se TimelineJS está carregado
-            if (typeof TL === 'undefined' || !TL.Timeline) {
-                console.log('TimelineJS not loaded yet, retrying...');
-                setTimeout(initTimeline, 500);
-                return;
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initTimeline);
+            } else {
+                initTimeline();
             }
-            
-            try {
-                console.log('Creating timeline...');
-                var timeline = new TL.Timeline(timelineId, timelineData, timelineConfig);
-                console.log('Timeline created successfully');
-            } catch(e) {
-                console.error('Error creating timeline:', e);
-                element.innerHTML = '<div style="padding: 20px; color: red;">Erro ao criar timeline: ' + e.message + '</div>';
-            }
-        }
+        })();
+        </script>
         
-        // Aguarda DOM e TimelineJS
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', function() {
-                setTimeout(initTimeline, 100);
-            });
-        } else {
-            setTimeout(initTimeline, 100);
-        }
-    })();
-    </script>
-    
-    <style>
-    .tei-timeline-container {
-        min-height: 500px;
-        background: #f5f5f5;
+        <style>
+        .tei-timeline-wrapper { margin: 20px 0; }
+        #<?php echo esc_attr($timeline_id); ?> { min-height: 500px; }
+        </style>
+        <?php
+        
+        return ob_get_clean();
     }
-    
-    /* Força altura mínima para o TimelineJS */
-    #<?php echo esc_attr($timeline_id); ?> {
-        min-height: 500px !important;
-    }
-    
-    /* Fix para TimelineJS responsivo */
-    .tl-timeline {
-        height: 100% !important;
-    }
-    </style>
-    <?php
-    
-    return ob_get_clean();
-}
     
     /**
      * Renderiza mensagem de erro
      */
     private function render_error($message) {
         return sprintf(
-            '<div class="tei-error"><p>%s</p></div>',
+            '<div class="tei-error" style="padding: 20px; background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px;">
+                <p style="margin: 0;">%s</p>
+            </div>',
             esc_html($message)
         );
     }
