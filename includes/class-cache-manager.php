@@ -1,6 +1,6 @@
 <?php
 /**
- * Gerenciador de Cache
+ * Gerenciador de Cache Inteligente
  * 
  * @package TainacanExplorador
  * @since 1.0.0
@@ -28,7 +28,14 @@ class TEI_Cache_Manager {
     const DEFAULT_EXPIRATION = 3600;
     
     /**
-     * Obtém item do cache
+     * Tamanhos de cache para estratégias
+     */
+    const SIZE_MEMORY = 1024;        // 1KB
+    const SIZE_TRANSIENT = 102400;   // 100KB
+    const SIZE_FILE = 1048576;       // 1MB
+    
+    /**
+     * Obtém item do cache com estratégia inteligente
      * 
      * @param string $key Chave do cache
      * @param mixed $default Valor padrão
@@ -37,25 +44,37 @@ class TEI_Cache_Manager {
     public static function get($key, $default = false) {
         $cache_key = self::CACHE_PREFIX . $key;
         
-        // Tenta cache do WordPress primeiro
+        // Tenta cache de memória primeiro (mais rápido)
         $cached = wp_cache_get($cache_key, self::CACHE_GROUP);
         if ($cached !== false) {
+            self::log_cache_hit('memory', $key);
             return $cached;
         }
         
-        // Tenta transient como fallback
+        // Tenta transient (persistente)
         $transient = get_transient($cache_key);
         if ($transient !== false) {
-            // Adiciona ao cache de memória
+            // Adiciona ao cache de memória para próximas requisições
             wp_cache_set($cache_key, $transient, self::CACHE_GROUP, self::DEFAULT_EXPIRATION);
+            self::log_cache_hit('transient', $key);
             return $transient;
         }
         
+        // Tenta cache de arquivo para dados grandes
+        $file_cache = self::get_file_cache($key);
+        if ($file_cache !== false) {
+            // Adiciona ao cache de memória
+            wp_cache_set($cache_key, $file_cache, self::CACHE_GROUP, 300); // 5 min no memory
+            self::log_cache_hit('file', $key);
+            return $file_cache;
+        }
+        
+        self::log_cache_miss($key);
         return $default;
     }
     
     /**
-     * Define item no cache
+     * Define item no cache com estratégia baseada em tamanho
      * 
      * @param string $key Chave do cache
      * @param mixed $value Valor a ser cacheado
@@ -66,18 +85,136 @@ class TEI_Cache_Manager {
         $cache_key = self::CACHE_PREFIX . $key;
         $expiration = $expiration ?: self::DEFAULT_EXPIRATION;
         
-        // Salva no cache de memória
+        // Determina estratégia baseada no tamanho
+        $size = strlen(serialize($value));
+        $strategy = self::get_cache_strategy($size);
+        
+        // Sempre salva no cache de memória para acesso rápido
         wp_cache_set($cache_key, $value, self::CACHE_GROUP, $expiration);
         
-        // Salva como transient para persistência
-        set_transient($cache_key, $value, $expiration);
+        switch ($strategy) {
+            case 'memory':
+                // Apenas memória, já feito acima
+                break;
+                
+            case 'transient':
+                // Salva como transient para persistência
+                set_transient($cache_key, $value, $expiration);
+                break;
+                
+            case 'file':
+                // Salva em arquivo para dados grandes
+                self::set_file_cache($key, $value, $expiration);
+                // Também salva referência em transient
+                set_transient($cache_key . '_ref', 'file', $expiration);
+                break;
+        }
         
         // Log de cache para debug
         if (defined('WP_DEBUG') && WP_DEBUG) {
-            self::log_cache_operation('set', $key, $expiration);
+            self::log_cache_operation('set', $key, [
+                'size' => $size,
+                'strategy' => $strategy,
+                'expiration' => $expiration
+            ]);
         }
         
         return true;
+    }
+    
+    /**
+     * Determina estratégia de cache baseada no tamanho
+     * 
+     * @param int $size Tamanho em bytes
+     * @return string
+     */
+    private static function get_cache_strategy($size) {
+        if ($size < self::SIZE_MEMORY) {
+            return 'memory';
+        } elseif ($size < self::SIZE_TRANSIENT) {
+            return 'transient';
+        } else {
+            return 'file';
+        }
+    }
+    
+    /**
+     * Obtém cache de arquivo
+     * 
+     * @param string $key Chave do cache
+     * @return mixed
+     */
+    private static function get_file_cache($key) {
+        $file_path = self::get_cache_file_path($key);
+        
+        if (!file_exists($file_path)) {
+            return false;
+        }
+        
+        $data = @file_get_contents($file_path);
+        if ($data === false) {
+            return false;
+        }
+        
+        $cache_data = @unserialize($data);
+        if ($cache_data === false) {
+            return false;
+        }
+        
+        // Verifica expiração
+        if (isset($cache_data['expires']) && $cache_data['expires'] < time()) {
+            @unlink($file_path);
+            return false;
+        }
+        
+        return $cache_data['value'] ?? false;
+    }
+    
+    /**
+     * Define cache de arquivo
+     * 
+     * @param string $key Chave do cache
+     * @param mixed $value Valor
+     * @param int $expiration Expiração
+     * @return bool
+     */
+    private static function set_file_cache($key, $value, $expiration) {
+        $file_path = self::get_cache_file_path($key);
+        $cache_dir = dirname($file_path);
+        
+        // Cria diretório se não existir
+        if (!file_exists($cache_dir)) {
+            wp_mkdir_p($cache_dir);
+            
+            // Adiciona .htaccess para proteção
+            $htaccess = $cache_dir . '/.htaccess';
+            if (!file_exists($htaccess)) {
+                file_put_contents($htaccess, 'Deny from all');
+            }
+        }
+        
+        $cache_data = [
+            'value' => $value,
+            'expires' => time() + $expiration,
+            'created' => time()
+        ];
+        
+        return @file_put_contents($file_path, serialize($cache_data)) !== false;
+    }
+    
+    /**
+     * Obtém caminho do arquivo de cache
+     * 
+     * @param string $key Chave do cache
+     * @return string
+     */
+    private static function get_cache_file_path($key) {
+        $upload_dir = wp_upload_dir();
+        $cache_dir = $upload_dir['basedir'] . '/tainacan-explorer-cache';
+        $hash = md5($key);
+        $sub_dir = substr($hash, 0, 2);
+        
+        return $cache_dir . '/' . $sub_dir . '/' . $hash . '.cache';
     }
     
     /**
@@ -89,8 +226,16 @@ class TEI_Cache_Manager {
     public static function delete($key) {
         $cache_key = self::CACHE_PREFIX . $key;
         
+        // Remove de todas as camadas
         wp_cache_delete($cache_key, self::CACHE_GROUP);
         delete_transient($cache_key);
+        delete_transient($cache_key . '_ref');
+        
+        // Remove arquivo se existir
+        $file_path = self::get_cache_file_path($key);
+        if (file_exists($file_path)) {
+            @unlink($file_path);
+        }
         
         return true;
     }
@@ -106,23 +251,62 @@ class TEI_Cache_Manager {
         
         // Pattern para transients da coleção
         $pattern = self::CACHE_PREFIX . '%collection_' . $collection_id . '%';
+        $pattern2 = self::CACHE_PREFIX . '%_' . $collection_id . '_%';
         
         // Remove transients do banco
         $wpdb->query($wpdb->prepare(
             "DELETE FROM {$wpdb->options} 
-             WHERE option_name LIKE %s 
-             OR option_name LIKE %s",
+             WHERE (option_name LIKE %s OR option_name LIKE %s)
+             AND (option_name LIKE %s OR option_name LIKE %s)",
             '_transient_' . $pattern,
-            '_transient_timeout_' . $pattern
+            '_transient_timeout_' . $pattern,
+            '_transient_' . $pattern2,
+            '_transient_timeout_' . $pattern2
         ));
         
         // Limpa cache de memória do grupo
         wp_cache_flush_group(self::CACHE_GROUP);
         
+        // Limpa arquivos de cache da coleção
+        self::clear_collection_file_cache($collection_id);
+        
         // Dispara hook
         do_action('tei_cache_cleared', 'collection', $collection_id);
         
         return true;
+    }
+    
+    /**
+     * Limpa cache de arquivos da coleção
+     * 
+     * @param int $collection_id ID da coleção
+     */
+    private static function clear_collection_file_cache($collection_id) {
+        $upload_dir = wp_upload_dir();
+        $cache_dir = $upload_dir['basedir'] . '/tainacan-explorer-cache';
+        
+        if (!file_exists($cache_dir)) {
+            return;
+        }
+        
+        // Varre diretórios de cache
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($cache_dir),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+        
+        foreach ($iterator as $file) {
+            if ($file->isFile() && $file->getExtension() === 'cache') {
+                $content = @file_get_contents($file->getPathname());
+                if ($content !== false) {
+                    // Verifica se pertence à coleção
+                    if (strpos($content, 'collection_' . $collection_id) !== false ||
+                        strpos($content, '_' . $collection_id . '_') !== false) {
+                        @unlink($file->getPathname());
+                    }
+                }
+            }
+        }
     }
     
     /**
@@ -216,6 +400,55 @@ class TEI_Cache_Manager {
     }
     
     /**
+     * Cache com lock para evitar stampede
+     * 
+     * @param string $key Chave do cache
+     * @param callable $callback Função para gerar dados
+     * @param int $expiration Tempo de expiração
+     * @return mixed
+     */
+    public static function remember_with_lock($key, $callback, $expiration = null) {
+        $cached = self::get($key);
+        
+        if ($cached !== false) {
+            return $cached;
+        }
+        
+        // Tenta obter lock
+        $lock_key = $key . '_lock';
+        $lock_acquired = add_transient($lock_key, 1, 30); // Lock por 30 segundos
+        
+        if (!$lock_acquired) {
+            // Outro processo está gerando o cache
+            // Aguarda e tenta novamente
+            $attempts = 0;
+            while ($attempts < 10) {
+                sleep(1);
+                $cached = self::get($key);
+                if ($cached !== false) {
+                    return $cached;
+                }
+                $attempts++;
+            }
+            
+            // Fallback: gera mesmo assim
+        }
+        
+        try {
+            $value = call_user_func($callback);
+            
+            if ($value !== false && $value !== null) {
+                self::set($key, $value, $expiration);
+            }
+            
+            return $value;
+        } finally {
+            // Remove lock
+            delete_transient($lock_key);
+        }
+    }
+    
+    /**
      * Obtém estatísticas do cache
      * 
      * @return array
@@ -238,13 +471,51 @@ class TEI_Cache_Manager {
             '_transient_' . self::CACHE_PREFIX . '%'
         ));
         
+        // Conta arquivos de cache
+        $file_stats = self::get_file_cache_stats();
+        
         return [
             'items' => intval($count),
             'size' => intval($size),
             'size_formatted' => size_format($size),
+            'file_items' => $file_stats['count'],
+            'file_size' => $file_stats['size'],
+            'file_size_formatted' => size_format($file_stats['size']),
+            'total_size' => intval($size) + $file_stats['size'],
+            'total_size_formatted' => size_format(intval($size) + $file_stats['size']),
             'group' => self::CACHE_GROUP,
             'prefix' => self::CACHE_PREFIX
         ];
+    }
+    
+    /**
+     * Obtém estatísticas do cache de arquivos
+     * 
+     * @return array
+     */
+    private static function get_file_cache_stats() {
+        $upload_dir = wp_upload_dir();
+        $cache_dir = $upload_dir['basedir'] . '/tainacan-explorer-cache';
+        
+        if (!file_exists($cache_dir)) {
+            return ['count' => 0, 'size' => 0];
+        }
+        
+        $count = 0;
+        $size = 0;
+        
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($cache_dir)
+        );
+        
+        foreach ($iterator as $file) {
+            if ($file->isFile() && $file->getExtension() === 'cache') {
+                $count++;
+                $size += $file->getSize();
+            }
+        }
+        
+        return ['count' => $count, 'size' => $size];
     }
     
     /**
@@ -276,9 +547,46 @@ class TEI_Cache_Manager {
             time()
         ));
         
+        // Limpa arquivos de cache expirados
+        self::cleanup_expired_files();
+        
         // Log de limpeza
         if (defined('WP_DEBUG') && WP_DEBUG) {
             error_log('TEI Cache Cleanup: Expired items removed');
+        }
+    }
+    
+    /**
+     * Limpa arquivos de cache expirados
+     */
+    private static function cleanup_expired_files() {
+        $upload_dir = wp_upload_dir();
+        $cache_dir = $upload_dir['basedir'] . '/tainacan-explorer-cache';
+        
+        if (!file_exists($cache_dir)) {
+            return;
+        }
+        
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($cache_dir)
+        );
+        
+        $deleted = 0;
+        foreach ($iterator as $file) {
+            if ($file->isFile() && $file->getExtension() === 'cache') {
+                $content = @file_get_contents($file->getPathname());
+                if ($content !== false) {
+                    $data = @unserialize($content);
+                    if ($data !== false && isset($data['expires']) && $data['expires'] < time()) {
+                        @unlink($file->getPathname());
+                        $deleted++;
+                    }
+                }
+            }
+        }
+        
+        if ($deleted > 0 && defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('TEI Cache Cleanup: ' . $deleted . ' expired files removed');
         }
     }
     
@@ -331,6 +639,24 @@ class TEI_Cache_Manager {
     }
     
     /**
+     * Log de cache hit
+     */
+    private static function log_cache_hit($type, $key) {
+        if (defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
+            error_log(sprintf('[TEI Cache] HIT (%s): %s', $type, $key));
+        }
+    }
+    
+    /**
+     * Log de cache miss
+     */
+    private static function log_cache_miss($key) {
+        if (defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
+            error_log(sprintf('[TEI Cache] MISS: %s', $key));
+        }
+    }
+    
+    /**
      * Aquece o cache
      * 
      * @param int $collection_id ID da coleção
@@ -341,16 +667,29 @@ class TEI_Cache_Manager {
         $api_handler = new TEI_API_Handler();
         
         // Cache de metadados da coleção
-        $metadata_key = 'collection_metadata_' . $collection_id;
-        self::remember($metadata_key, function() use ($api_handler, $collection_id) {
+        $metadata_key = 'metadata_' . $collection_id;
+        self::remember_with_lock($metadata_key, function() use ($api_handler, $collection_id) {
             return $api_handler->get_collection_metadata($collection_id);
         }, DAY_IN_SECONDS);
         
         // Cache de primeiros itens
-        $items_key = 'collection_items_preview_' . $collection_id;
-        self::remember($items_key, function() use ($api_handler, $collection_id) {
+        $items_key = 'items_preview_' . $collection_id;
+        self::remember_with_lock($items_key, function() use ($api_handler, $collection_id) {
             return $api_handler->get_collection_items($collection_id, ['perpage' => 20]);
         }, HOUR_IN_SECONDS);
+        
+        // Cache de mapeamentos
+        $mappings_key = 'mappings_' . $collection_id;
+        self::remember($mappings_key, function() use ($collection_id) {
+            $mappings = [];
+            foreach (['map', 'timeline', 'story'] as $type) {
+                $mapping = TEI_Metadata_Mapper::get_mapping($collection_id, $type);
+                if ($mapping) {
+                    $mappings[$type] = $mapping;
+                }
+            }
+            return $mappings;
+        }, DAY_IN_SECONDS);
         
         return true;
     }
