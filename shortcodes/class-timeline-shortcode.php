@@ -405,9 +405,14 @@ class TEI_Timeline_Shortcode {
      * Renderiza a timeline
      */
     private function render_timeline($timeline_id, $timeline_data, $config, $atts) {
+        // Define estilos específicos por tema
+        $theme_styles = $this->get_theme_styles($atts['theme']);
+        
         ob_start();
         ?>
-        <div class="tei-timeline-wrapper tei-timeline-<?php echo esc_attr($atts['theme']); ?>" style="width: <?php echo esc_attr($atts['width']); ?>;">
+        <div class="tei-timeline-wrapper tei-timeline-<?php echo esc_attr($atts['theme']); ?>" 
+             data-theme="<?php echo esc_attr($atts['theme']); ?>"
+             style="width: <?php echo esc_attr($atts['width']); ?>;">
             <div id="<?php echo esc_attr($timeline_id); ?>" 
                  style="width: 100%; height: <?php echo esc_attr($atts['height']); ?>;">
             </div>
@@ -418,9 +423,7 @@ class TEI_Timeline_Shortcode {
             var timelineData = <?php echo wp_json_encode($timeline_data); ?>;
             var timelineConfig = <?php echo wp_json_encode($config); ?>;
             var timelineId = '<?php echo esc_js($timeline_id); ?>';
-            
-            console.log('Timeline Data:', timelineData);
-            console.log('Timeline Events:', timelineData.events.length);
+            var theme = '<?php echo esc_js($atts['theme']); ?>';
             
             function initTimeline() {
                 if (typeof TL === 'undefined' || !TL.Timeline) {
@@ -429,13 +432,29 @@ class TEI_Timeline_Shortcode {
                 }
                 
                 try {
-                    new TL.Timeline(timelineId, timelineData, timelineConfig);
+                    var timeline = new TL.Timeline(timelineId, timelineData, timelineConfig);
+                    
+                    // Aplica estilos após carregar
+                    setTimeout(function() {
+                        applyThemeStyles(theme);
+                    }, 500);
                 } catch(e) {
                     console.error('Timeline error:', e);
                     document.getElementById(timelineId).innerHTML = 
                         '<div style="padding: 20px; text-align: center; color: #666;">' +
                         'Erro ao carregar timeline: ' + e.message + '</div>';
                 }
+            }
+            
+            function applyThemeStyles(theme) {
+                var container = document.getElementById(timelineId);
+                if (!container) return;
+                
+                // Força aplicação de estilos baseado no tema
+                var slides = container.querySelectorAll('.tl-slide-content');
+                slides.forEach(function(slide) {
+                    slide.classList.add('theme-' + theme);
+                });
             }
             
             if (document.readyState === 'loading') {
@@ -447,125 +466,243 @@ class TEI_Timeline_Shortcode {
         </script>
         
         <style>
+        /* Base styles */
         .tei-timeline-wrapper { 
             margin: 20px 0; 
-            border-radius: 12px;
+            border-radius: 16px;
             overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
         }
         
         #<?php echo esc_attr($timeline_id); ?> { 
             min-height: 500px; 
         }
         
-        /* Estilo moderno para a timeline */
-        .tei-timeline-modern .tl-timeline {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        /* Remove fundo azul padrão do TimelineJS */
+        #<?php echo esc_attr($timeline_id); ?> .tl-slide-content {
+            background: <?php echo $theme_styles['slide_bg']; ?> !important;
         }
         
-        /* Cards com gradiente suave */
-        .tei-timeline-modern .tl-text {
-            background: linear-gradient(135deg, #f6f9fc 0%, #ffffff 100%) !important;
-            border-radius: 12px !important;
-            padding: 20px !important;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+        #<?php echo esc_attr($timeline_id); ?> .tl-slide {
+            background: <?php echo $theme_styles['container_bg']; ?> !important;
         }
         
-        /* Hover effect nos cards */
-        .tei-timeline-modern .tl-text:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important;
-            transition: all 0.3s ease;
+        /* Tema: Modern (Padrão) */
+        <?php if ($atts['theme'] === 'modern'): ?>
+        #<?php echo esc_attr($timeline_id); ?> .tl-slide-content {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%) !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 16px !important;
+            padding: 32px !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
         }
         
-        /* Estilo para diferentes categorias/grupos */
-        .tl-timeline .tl-timemarker[class*="tl-timemarker-group"] .tl-timemarker-content-container {
-            border-radius: 8px !important;
-            overflow: hidden;
-        }
-        
-        /* Cores para grupos/categorias */
-        .tl-timeline .tl-timemarker-group-1 .tl-timemarker-content-container {
-            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%) !important;
-        }
-        
-        .tl-timeline .tl-timemarker-group-2 .tl-timemarker-content-container {
-            background: linear-gradient(135deg, #e9d5ff 0%, #d8b4fe 100%) !important;
-        }
-        
-        .tl-timeline .tl-timemarker-group-3 .tl-timemarker-content-container {
-            background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%) !important;
-        }
-        
-        .tl-timeline .tl-timemarker-group-4 .tl-timemarker-content-container {
-            background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%) !important;
-        }
-        
-        .tl-timeline .tl-timemarker-group-5 .tl-timemarker-content-container {
-            background: linear-gradient(135deg, #bbf7d0 0%, #86efac 100%) !important;
-        }
-        
-        /* Estilo para os títulos */
-        .tl-headline {
+        #<?php echo esc_attr($timeline_id); ?> .tl-headline-date {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+            color: white !important;
+            padding: 4px 12px !important;
+            border-radius: 20px !important;
+            font-size: 12px !important;
             font-weight: 600 !important;
-            color: #1f2937 !important;
+            display: inline-block !important;
             margin-bottom: 12px !important;
         }
+        <?php endif; ?>
         
-        /* Links nos títulos */
-        .tl-headline a {
-            color: inherit !important;
-            text-decoration: none !important;
-            border-bottom: 2px solid transparent;
-            transition: border-color 0.2s;
+        /* Tema: Dark */
+        <?php if ($atts['theme'] === 'dark'): ?>
+        #<?php echo esc_attr($timeline_id); ?> .tl-slide-content {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
+            color: #e2e8f0 !important;
+            border: 1px solid #334155 !important;
+            border-radius: 16px !important;
+            padding: 32px !important;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3) !important;
         }
         
-        .tl-headline a:hover {
-            border-bottom-color: #3b82f6;
+        #<?php echo esc_attr($timeline_id); ?> .tl-headline,
+        #<?php echo esc_attr($timeline_id); ?> .tl-headline a {
+            color: #f1f5f9 !important;
         }
         
-        /* Navegação temporal mais moderna */
-        .tl-timenav {
-            background: linear-gradient(180deg, #f9fafb 0%, #f3f4f6 100%) !important;
-            border-top: 1px solid #e5e7eb !important;
+        #<?php echo esc_attr($timeline_id); ?> .tl-text {
+            color: #cbd5e1 !important;
         }
         
-        /* Marcadores da timeline */
-        .tl-timemarker .tl-timemarker-line-left,
-        .tl-timemarker .tl-timemarker-line-right {
-            border-color: #d1d5db !important;
+        #<?php echo esc_attr($timeline_id); ?> .tl-timenav {
+            background: #0f172a !important;
+            border-top: 1px solid #334155 !important;
         }
         
-        /* Ponto ativo */
-        .tl-timemarker.tl-timemarker-active .tl-timemarker-content-container {
-            box-shadow: 0 8px 16px rgba(59, 130, 246, 0.2) !important;
+        #<?php echo esc_attr($timeline_id); ?> .tl-timemarker-content-container {
+            background: #1e293b !important;
+            color: #e2e8f0 !important;
+        }
+        <?php endif; ?>
+        
+        /* Tema: Minimal */
+        <?php if ($atts['theme'] === 'minimal'): ?>
+        #<?php echo esc_attr($timeline_id); ?> .tl-slide-content {
+            background: #ffffff !important;
+            border: none !important;
+            border-left: 4px solid #e5e7eb !important;
+            border-radius: 0 !important;
+            padding: 24px !important;
+            box-shadow: none !important;
+        }
+        
+        #<?php echo esc_attr($timeline_id); ?> .tl-headline {
+            font-weight: 400 !important;
+            color: #111827 !important;
+            font-size: 28px !important;
+            letter-spacing: -0.02em !important;
+        }
+        
+        #<?php echo esc_attr($timeline_id); ?> .tl-text {
+            color: #6b7280 !important;
+            line-height: 1.8 !important;
+        }
+        <?php endif; ?>
+        
+        /* Tema: Colorful */
+        <?php if ($atts['theme'] === 'colorful'): ?>
+        #<?php echo esc_attr($timeline_id); ?> .tl-slide-content:nth-child(5n+1) {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
+            border: 2px solid #f59e0b !important;
+        }
+        
+        #<?php echo esc_attr($timeline_id); ?> .tl-slide-content:nth-child(5n+2) {
+            background: linear-gradient(135deg, #ddd6fe 0%, #c4b5fd 100%) !important;
+            border: 2px solid #8b5cf6 !important;
+        }
+        
+        #<?php echo esc_attr($timeline_id); ?> .tl-slide-content:nth-child(5n+3) {
+            background: linear-gradient(135deg, #fecaca 0%, #fca5a5 100%) !important;
+            border: 2px solid #ef4444 !important;
+        }
+        
+        #<?php echo esc_attr($timeline_id); ?> .tl-slide-content:nth-child(5n+4) {
+            background: linear-gradient(135deg, #a7f3d0 0%, #6ee7b7 100%) !important;
+            border: 2px solid #10b981 !important;
+        }
+        
+        #<?php echo esc_attr($timeline_id); ?> .tl-slide-content:nth-child(5n+5) {
+            background: linear-gradient(135deg, #bfdbfe 0%, #93c5fd 100%) !important;
             border: 2px solid #3b82f6 !important;
         }
         
-        /* Imagens com borda arredondada */
-        .tl-media-image img {
+        #<?php echo esc_attr($timeline_id); ?> .tl-slide-content {
+            border-radius: 20px !important;
+            padding: 28px !important;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
+        }
+        <?php endif; ?>
+        
+        /* Tema: Professional */
+        <?php if ($atts['theme'] === 'professional'): ?>
+        #<?php echo esc_attr($timeline_id); ?> .tl-slide-content {
+            background: #fafafa !important;
+            border: 1px solid #d4d4d8 !important;
             border-radius: 8px !important;
+            padding: 40px !important;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1) !important;
         }
         
-        /* Animação de entrada */
-        @keyframes slideInUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        #<?php echo esc_attr($timeline_id); ?> .tl-headline {
+            font-family: 'Georgia', serif !important;
+            font-weight: 700 !important;
+            color: #18181b !important;
+            font-size: 32px !important;
+            margin-bottom: 20px !important;
         }
         
-        .tl-slide-content {
-            animation: slideInUp 0.5s ease;
+        #<?php echo esc_attr($timeline_id); ?> .tl-text {
+            font-family: 'Georgia', serif !important;
+            color: #3f3f46 !important;
+            line-height: 1.75 !important;
+            font-size: 16px !important;
+        }
+        
+        #<?php echo esc_attr($timeline_id); ?> .tl-timenav {
+            background: #fafafa !important;
+            border-top: 2px solid #18181b !important;
+        }
+        <?php endif; ?>
+        
+        /* Estilos comuns aprimorados */
+        #<?php echo esc_attr($timeline_id); ?> .tl-headline {
+            font-weight: 700 !important;
+            margin-bottom: 16px !important;
+        }
+        
+        #<?php echo esc_attr($timeline_id); ?> .tl-headline a {
+            text-decoration: none !important;
+            transition: all 0.3s ease !important;
+        }
+        
+        #<?php echo esc_attr($timeline_id); ?> .tl-headline a:hover {
+            opacity: 0.8 !important;
+        }
+        
+        #<?php echo esc_attr($timeline_id); ?> .tl-media-image img {
+            border-radius: 12px !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+        }
+        
+        /* Animações */
+        #<?php echo esc_attr($timeline_id); ?> .tl-slide-content {
+            transition: all 0.3s ease !important;
+        }
+        
+        #<?php echo esc_attr($timeline_id); ?> .tl-slide-content:hover {
+            transform: translateY(-4px) !important;
+        }
+        
+        /* Remove o fundo azul claro padrão */
+        #<?php echo esc_attr($timeline_id); ?> .tl-slide,
+        #<?php echo esc_attr($timeline_id); ?> .tl-slide-content,
+        #<?php echo esc_attr($timeline_id); ?> .tl-text-content {
+            background-color: transparent !important;
+        }
+        
+        /* Garante que o tema seja aplicado */
+        #<?php echo esc_attr($timeline_id); ?> .tl-text-content-container {
+            background: none !important;
         }
         </style>
         <?php
         
         return ob_get_clean();
+    }
+    
+    /**
+     * Obtém estilos por tema
+     */
+    private function get_theme_styles($theme) {
+        $themes = [
+            'modern' => [
+                'slide_bg' => 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+                'container_bg' => '#ffffff'
+            ],
+            'dark' => [
+                'slide_bg' => 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+                'container_bg' => '#0f172a'
+            ],
+            'minimal' => [
+                'slide_bg' => '#ffffff',
+                'container_bg' => '#ffffff'
+            ],
+            'colorful' => [
+                'slide_bg' => '#ffffff',
+                'container_bg' => '#ffffff'
+            ],
+            'professional' => [
+                'slide_bg' => '#fafafa',
+                'container_bg' => '#ffffff'
+            ]
+        ];
+        
+        return $themes[$theme] ?? $themes['modern'];
     }
     
     /**
