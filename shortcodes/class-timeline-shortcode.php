@@ -20,7 +20,7 @@ class TEI_Timeline_Shortcode {
         $atts = TEI_Sanitizer::sanitize_shortcode_atts($atts, [
             'collection' => '',
             'height' => '650px',
-            'width' => '100%',
+            'width' => '100%', // Padrão mudado para 100% - largura total
             'start_date' => '',
             'end_date' => '',
             'initial_zoom' => 2,
