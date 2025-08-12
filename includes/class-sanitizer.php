@@ -13,6 +13,19 @@ if (!defined('ABSPATH')) {
 class TEI_Sanitizer {
     
     /**
+     * Limites para validação de coordenadas
+     */
+    const LAT_MIN = -90;
+    const LAT_MAX = 90;
+    const LON_MIN = -180;
+    const LON_MAX = 180;
+    
+    /**
+     * Rate limiting
+     */
+    private static $rate_limits = [];
+    
+    /**
      * Sanitiza dados de entrada
      * 
      * @param mixed $data Dados a serem sanitizados
@@ -113,26 +126,54 @@ class TEI_Sanitizer {
     }
     
     /**
-     * Sanitiza coordenadas
+     * Sanitiza coordenadas com validação aprimorada
      * 
      * @param mixed $coords Coordenadas
      * @return array|null
      */
-    private static function sanitize_coordinates($coords) {
+    public static function sanitize_coordinates($coords) {
+        // Previne injection via coordenadas
         if (is_string($coords)) {
+            // Remove caracteres perigosos
+            if (preg_match('/[^0-9\.\-,\s]/', $coords)) {
+                error_log('TEI Security: Invalid characters in coordinates');
+                return null;
+            }
+            
             // Formato: lat,lon
             if (preg_match('/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/', $coords, $matches)) {
+                $lat = floatval($matches[1]);
+                $lon = floatval($matches[2]);
+                
+                // Valida bounds geográficos
+                if ($lat < self::LAT_MIN || $lat > self::LAT_MAX) {
+                    error_log('TEI Security: Latitude out of bounds: ' . $lat);
+                    return null;
+                }
+                
+                if ($lon < self::LON_MIN || $lon > self::LON_MAX) {
+                    error_log('TEI Security: Longitude out of bounds: ' . $lon);
+                    return null;
+                }
+                
                 return [
-                    'lat' => floatval($matches[1]),
-                    'lon' => floatval($matches[2])
+                    'lat' => $lat,
+                    'lon' => $lon
                 ];
             }
         } elseif (is_array($coords)) {
             if (isset($coords['lat']) && isset($coords['lon'])) {
-                return [
-                    'lat' => floatval($coords['lat']),
-                    'lon' => floatval($coords['lon'])
-                ];
+                $lat = floatval($coords['lat']);
+                $lon = floatval($coords['lon']);
+                
+                // Valida bounds
+                if ($lat >= self::LAT_MIN && $lat <= self::LAT_MAX &&
+                    $lon >= self::LON_MIN && $lon <= self::LON_MAX) {
+                    return [
+                        'lat' => $lat,
+                        'lon' => $lon
+                    ];
+                }
             }
         }
         
@@ -146,6 +187,9 @@ class TEI_Sanitizer {
      * @return string
      */
     private static function sanitize_date($date) {
+        // Remove caracteres perigosos
+        $date = preg_replace('/[^0-9\-\/\s\:]/', '', $date);
+        
         $timestamp = strtotime($date);
         if ($timestamp !== false) {
             return date('Y-m-d H:i:s', $timestamp);
@@ -219,12 +263,6 @@ class TEI_Sanitizer {
                 $coords = self::sanitize_coordinates($data);
                 if (!$coords) {
                     return new WP_Error('invalid_coords', __('Coordenadas inválidas', 'tainacan-explorador'));
-                }
-                if ($coords['lat'] < -90 || $coords['lat'] > 90) {
-                    return new WP_Error('invalid_lat', __('Latitude deve estar entre -90 e 90', 'tainacan-explorador'));
-                }
-                if ($coords['lon'] < -180 || $coords['lon'] > 180) {
-                    return new WP_Error('invalid_lon', __('Longitude deve estar entre -180 e 180', 'tainacan-explorador'));
                 }
                 break;
                 
@@ -369,6 +407,9 @@ class TEI_Sanitizer {
         // Remove namespaced elements
         $input = preg_replace('#</*\w+:\w[^>]*>#i', '', $input);
         
+        // Remove data URIs perigosos
+        $input = preg_replace('#data:(?!image\/(gif|png|jpeg|jpg);base64)#i', 'data-disabled:', $input);
+        
         return $input;
     }
     
@@ -395,5 +436,92 @@ class TEI_Sanitizer {
             return user_can($user_id, $capability);
         }
         return current_user_can($capability);
+    }
+    
+    /**
+     * Rate limiting para prevenir abuso
+     * 
+     * @param string $action Ação a ser limitada
+     * @param int $max_attempts Máximo de tentativas
+     * @param int $window Janela de tempo em segundos
+     * @return bool
+     */
+    public static function check_rate_limit($action, $max_attempts = 10, $window = 60) {
+        $user_id = get_current_user_id();
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $key = md5($action . '_' . $user_id . '_' . $ip);
+        
+        $transient_key = 'tei_rate_' . $key;
+        $attempts = get_transient($transient_key);
+        
+        if ($attempts === false) {
+            set_transient($transient_key, 1, $window);
+            return true;
+        }
+        
+        if ($attempts >= $max_attempts) {
+            error_log('TEI Security: Rate limit exceeded for action ' . $action);
+            return false;
+        }
+        
+        set_transient($transient_key, $attempts + 1, $window);
+        return true;
+    }
+    
+    /**
+     * Sanitiza upload de arquivo
+     * 
+     * @param array $file Array $_FILES
+     * @param array $allowed_types Tipos permitidos
+     * @return array|WP_Error
+     */
+    public static function sanitize_file_upload($file, $allowed_types = ['jpg', 'jpeg', 'png', 'pdf']) {
+        if (!isset($file['name']) || !isset($file['tmp_name'])) {
+            return new WP_Error('invalid_file', __('Arquivo inválido', 'tainacan-explorador'));
+        }
+        
+        // Verifica extensão
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, $allowed_types)) {
+            return new WP_Error('invalid_type', __('Tipo de arquivo não permitido', 'tainacan-explorador'));
+        }
+        
+        // Verifica MIME type real
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mime = finfo_file($finfo, $file['tmp_name']);
+        finfo_close($finfo);
+        
+        $allowed_mimes = [
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'pdf' => 'application/pdf'
+        ];
+        
+        if (!isset($allowed_mimes[$ext]) || $allowed_mimes[$ext] !== $mime) {
+            return new WP_Error('mime_mismatch', __('Tipo MIME inválido', 'tainacan-explorador'));
+        }
+        
+        // Verifica tamanho
+        $max_size = 5 * 1024 * 1024; // 5MB
+        if ($file['size'] > $max_size) {
+            return new WP_Error('file_too_large', __('Arquivo muito grande', 'tainacan-explorador'));
+        }
+        
+        return [
+            'name' => sanitize_file_name($file['name']),
+            'type' => $mime,
+            'tmp_name' => $file['tmp_name'],
+            'size' => intval($file['size'])
+        ];
+    }
+    
+    /**
+     * Adiciona Content Security Policy headers
+     */
+    public static function add_csp_headers() {
+        if (!headers_sent()) {
+            header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com; img-src 'self' data: https:; font-src 'self' data:");
+        }
     }
 }
