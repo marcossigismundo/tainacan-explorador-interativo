@@ -208,8 +208,18 @@ class TEI_API_Handler {
      * @return array
      */
     private function normalize_item($item, $collection_id) {
+        // Obtém ID do item de forma segura
+        $item_id = 0;
+        if (isset($item['id'])) {
+            $item_id = $item['id'];
+        } elseif (isset($item['ID'])) {
+            $item_id = $item['ID'];
+        } elseif (isset($item['item_id'])) {
+            $item_id = $item['item_id'];
+        }
+        
         $normalized = [
-            'id' => $item['id'] ?? 0,
+            'id' => $item_id,
             'title' => '',
             'description' => '',
             'url' => '',
@@ -242,9 +252,9 @@ class TEI_API_Handler {
             $normalized['url'] = $item['url'];
         } elseif (isset($item['link'])) {
             $normalized['url'] = $item['link'];
-        } else {
+        } elseif ($item_id) {
             // Constrói URL padrão do Tainacan
-            $normalized['url'] = home_url("/colecao/{$collection_id}/item/{$item['id']}");
+            $normalized['url'] = home_url("/colecao/{$collection_id}/item/{$item_id}");
         }
         
         // Thumbnail
@@ -292,7 +302,9 @@ class TEI_API_Handler {
                     ];
                 }
                 
-                error_log('TEI Debug - Added metadata: ' . $meta_id . ' = ' . json_encode($value));
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('TEI Debug - Added metadata: ' . $meta_id . ' = ' . json_encode($value));
+                }
             }
         }
         
