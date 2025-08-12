@@ -59,28 +59,18 @@ class TEI_API_Handler {
             'paged' => 1,
             'order' => 'DESC',
             'orderby' => 'date',
-            'fetch_only' => 'title,description,thumbnail,document,_attachments'
+            'fetch_only' => 'title,description,thumbnail,document,_attachments',
+            'exposer' => 'json' // Força exposer JSON para ter dados completos
         ];
         
         $params = wp_parse_args($params, $defaults);
         
-        // Se há metadados específicos para buscar, adiciona ao fetch_only
+        // Força busca de TODOS os metadados se especificado
         if (!empty($params['fetch_only_meta'])) {
-            // Busca primeiro os metadados da coleção para validar IDs
-            $metadata_list = $this->get_collection_metadata($collection_id);
-            if (!is_wp_error($metadata_list)) {
-                $valid_meta_ids = array_column($metadata_list, 'id');
-                $requested_meta = explode(',', $params['fetch_only_meta']);
-                $valid_requested = array_intersect($requested_meta, $valid_meta_ids);
-                
-                if (!empty($valid_requested)) {
-                    // Adiciona metadados válidos ao fetch_only
-                    $params['fetch_only'] .= ',' . implode(',', array_map(function($id) {
-                        return 'meta:' . $id;
-                    }, $valid_requested));
-                }
-            }
-            unset($params['fetch_only_meta']);
+            // Remove fetch_only para buscar tudo
+            unset($params['fetch_only']);
+            // Adiciona parâmetro para buscar todos os metadados
+            $params['fetch'] = 'all';
         }
         
         // Adiciona parâmetros à URL
@@ -115,22 +105,34 @@ class TEI_API_Handler {
         
         // Tainacan v2 retorna diretamente array de itens
         if (is_array($data)) {
-            $items = $data;
-            // Obtém total do header
-            $headers = wp_remote_retrieve_headers($response);
-            if (isset($headers['x-wp-total'])) {
-                $total = intval($headers['x-wp-total']);
+            // Verifica se é um objeto com items
+            if (isset($data['items']) && is_array($data['items'])) {
+                $items = $data['items'];
+                $total = $data['found_items'] ?? count($items);
             } else {
-                $total = count($items);
+                // Array direto de itens
+                $items = $data;
+                // Obtém total do header
+                $headers = wp_remote_retrieve_headers($response);
+                if (isset($headers['x-wp-total'])) {
+                    $total = intval($headers['x-wp-total']);
+                } else {
+                    $total = count($items);
+                }
             }
         }
         
         error_log('TEI Debug - Items found: ' . count($items));
+        if (!empty($items)) {
+            error_log('TEI Debug - First item structure: ' . json_encode(array_keys($items[0])));
+        }
         
         // Processa cada item para normalizar estrutura
         $processed_items = [];
         foreach ($items as $item) {
-            $processed_items[] = $this->normalize_item($item, $collection_id);
+            if (is_array($item)) {
+                $processed_items[] = $this->normalize_item($item, $collection_id);
+            }
         }
         
         $result = [
@@ -277,33 +279,35 @@ class TEI_API_Handler {
         
         // Processa metadados - Estrutura correta do Tainacan v2
         // Os metadados vêm diretamente no item com chave meta:<id>
-        foreach ($item as $key => $value) {
-            // Verifica se é um metadado (começa com 'meta:' ou é numérico)
-            if (strpos($key, 'meta:') === 0 || is_numeric($key)) {
-                $meta_id = str_replace('meta:', '', $key);
-                
-                // Se o valor é array com estrutura de metadado
-                if (is_array($value) && isset($value['value'])) {
-                    $normalized['metadata'][$meta_id] = [
-                        'id' => $meta_id,
-                        'name' => $value['name'] ?? '',
-                        'value' => $value['value'] ?? '',
-                        'value_as_html' => $value['value_as_html'] ?? '',
-                        'value_as_string' => $value['value_as_string'] ?? ''
-                    ];
-                } else {
-                    // Valor direto
-                    $normalized['metadata'][$meta_id] = [
-                        'id' => $meta_id,
-                        'name' => '',
-                        'value' => $value,
-                        'value_as_html' => $value,
-                        'value_as_string' => is_array($value) ? json_encode($value) : (string)$value
-                    ];
-                }
-                
-                if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('TEI Debug - Added metadata: ' . $meta_id . ' = ' . json_encode($value));
+        if (is_array($item)) {
+            foreach ($item as $key => $value) {
+                // Verifica se é um metadado (começa com 'meta:' ou é numérico)
+                if (strpos($key, 'meta:') === 0 || is_numeric($key)) {
+                    $meta_id = str_replace('meta:', '', $key);
+                    
+                    // Se o valor é array com estrutura de metadado
+                    if (is_array($value) && isset($value['value'])) {
+                        $normalized['metadata'][$meta_id] = [
+                            'id' => $meta_id,
+                            'name' => $value['name'] ?? '',
+                            'value' => $value['value'] ?? '',
+                            'value_as_html' => $value['value_as_html'] ?? '',
+                            'value_as_string' => $value['value_as_string'] ?? ''
+                        ];
+                    } else {
+                        // Valor direto
+                        $normalized['metadata'][$meta_id] = [
+                            'id' => $meta_id,
+                            'name' => '',
+                            'value' => $value,
+                            'value_as_html' => is_string($value) ? $value : '',
+                            'value_as_string' => is_array($value) ? json_encode($value) : (string)$value
+                        ];
+                    }
+                    
+                    if (defined('WP_DEBUG') && WP_DEBUG) {
+                        error_log('TEI Debug - Added metadata: ' . $meta_id . ' = ' . json_encode($value));
+                    }
                 }
             }
         }
