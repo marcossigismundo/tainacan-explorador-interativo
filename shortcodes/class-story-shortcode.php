@@ -319,6 +319,28 @@ if (is_wp_error($story_data)) {
         ob_start();
         ?>
         <div class="tei-story-container <?php echo esc_attr($atts['class']); ?>" 
+<style>
+    /* Força backgrounds sempre visíveis */
+    .tei-story-background[data-background-type="image"] {
+        opacity: 0.7 !important;
+        visibility: visible !important;
+        display: block !important;
+    }
+    
+    /* Preserva background-image */
+    .tei-story-background[style*="background-image"] {
+        background-size: cover !important;
+        background-position: center !important;
+        background-repeat: no-repeat !important;
+    }
+    
+    /* Desabilita animações que causam problema */
+    .tei-story-background {
+        transform: none !important;
+        will-change: auto !important;
+    }
+</style>
+            
              data-story-id="<?php echo esc_attr($story_id); ?>"
              data-tei-story="true"
              data-tei-story-config='<?php echo esc_attr(wp_json_encode($config)); ?>'
