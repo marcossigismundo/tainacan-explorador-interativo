@@ -237,6 +237,37 @@
             }
         };
         
+        const clearCache = async (collectionId = null) => {
+            if (!confirm(collectionId ? 
+                __('Limpar cache desta coleção?', 'tainacan-explorador') : 
+                __('Limpar TODO o cache do plugin?', 'tainacan-explorador')
+            )) {
+                return;
+            }
+            
+            try {
+                const response = await jQuery.ajax({
+                    url: teiAdmin.ajaxUrl,
+                    type: 'POST',
+                    data: {
+                        action: 'tei_clear_collection_cache',
+                        collection_id: collectionId || 0,
+                        nonce: teiAdmin.ajaxNonce
+                    }
+                });
+                
+                if (response.success) {
+                    showNotification(response.data.message || __('Cache limpo!', 'tainacan-explorador'), 'success');
+                    // Recarrega metadados se uma coleção estiver selecionada
+                    if (selectedCollection) {
+                        loadMetadata(selectedCollection.id);
+                    }
+                }
+            } catch (error) {
+                showNotification(__('Erro ao limpar cache', 'tainacan-explorador'), 'error');
+            }
+        };
+        
         const deleteMappingHandler = async (mappingId) => {
             if (!confirm(__('Tem certeza que deseja excluir este mapeamento?', 'tainacan-explorador'))) {
                 return;
@@ -481,8 +512,15 @@
                         el(Button, {
                             isSecondary: true,
                             onClick: () => testVisualization(type),
+                            disabled: !selectedCollection,
+                            style: { marginRight: '10px' }
+                        }, __('Visualizar Prévia', 'tainacan-explorador')),
+                        
+                        el(Button, {
+                            isDestructive: true,
+                            onClick: () => clearCache(selectedCollection?.id),
                             disabled: !selectedCollection
-                        }, __('Visualizar Prévia', 'tainacan-explorador'))
+                        }, __('Limpar Cache', 'tainacan-explorador'))
                     )
                 )
             );
@@ -520,7 +558,14 @@
             
             el('div', { className: 'tei-admin-header', style: { marginBottom: '20px' } },
                 el('h1', null, __('Explorador Interativo', 'tainacan-explorador')),
-                el('p', null, __('Configure visualizações interativas para suas coleções do Tainacan', 'tainacan-explorador'))
+                el('p', null, __('Configure visualizações interativas para suas coleções do Tainacan', 'tainacan-explorador')),
+                el('div', { style: { marginTop: '10px' } },
+                    el(Button, {
+                        isDestructive: true,
+                        isSmall: true,
+                        onClick: () => clearCache(null)
+                    }, __('Limpar Todo Cache', 'tainacan-explorador'))
+                )
             ),
             
             el(TabPanel, {
