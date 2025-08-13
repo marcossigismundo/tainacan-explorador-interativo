@@ -1,7 +1,6 @@
 <?php
 /**
  * Shortcode para visualização de Mapa
- * Arquivo: shortcodes/class-mapa-shortcode.php
  * 
  * @package TainacanExplorador
  * @since 1.0.0
@@ -37,26 +36,26 @@ class TEI_Mapa_Shortcode {
             'id' => 'tei-map-' . uniqid()
         ]);
         
-// Validação da coleção
-if (empty($atts['collection']) || !is_numeric($atts['collection'])) {
-    return $this->render_error(__('ID da coleção não especificado ou inválido.', 'tainacan-explorador'));
-}
-
-$collection_id = intval($atts['collection']);
-
-// Obtém mapeamento
-$mapping = TEI_Metadata_Mapper::get_mapping($collection_id, 'map');
-
-if (!$mapping) {
-    return $this->render_error(__('Mapeamento não configurado para esta coleção.', 'tainacan-explorador'));
-}
-
-// Obtém dados da coleção
-$collection_data = $this->get_collection_data($collection_id, $mapping, $atts);
-
-if (is_wp_error($collection_data)) {
-    return $this->render_error($collection_data->get_error_message());
-}
+        // Validação da coleção
+        if (empty($atts['collection']) || !is_numeric($atts['collection'])) {
+            return $this->render_error(__('ID da coleção não especificado ou inválido.', 'tainacan-explorador'));
+        }
+        
+        $collection_id = intval($atts['collection']);
+        
+        // Obtém mapeamento
+        $mapping = TEI_Metadata_Mapper::get_mapping($collection_id, 'map');
+        
+        if (!$mapping) {
+            return $this->render_error(__('Mapeamento não configurado para esta coleção.', 'tainacan-explorador'));
+        }
+        
+        // Obtém dados da coleção
+        $collection_data = $this->get_collection_data($collection_id, $mapping, $atts);
+        
+        if (is_wp_error($collection_data)) {
+            return $this->render_error($collection_data->get_error_message());
+        }
         
         // Prepara dados para o mapa
         $map_data = $this->prepare_map_data($collection_data, $mapping);
@@ -72,9 +71,21 @@ if (is_wp_error($collection_data)) {
      * Obtém dados da coleção via API do Tainacan
      */
     private function get_collection_data($collection_id, $mapping, $atts) {
+        // Gera chave de cache única baseada nos parâmetros
+        $cache_key_parts = [
+            'map_data',
+            $collection_id,
+            md5(serialize([
+                'limit' => $atts['limit'],
+                'filter' => $atts['filter'],
+                'mapping' => $mapping['mapping_data']
+            ]))
+        ];
+        
+        $cache_key = 'tei_' . implode('_', $cache_key_parts);
+        
         // Verifica cache
         if ($atts['cache']) {
-            $cache_key = 'tei_map_data_' . $collection_id . '_' . md5(serialize($atts));
             $cached_data = TEI_Cache_Manager::get($cache_key);
             
             if ($cached_data !== false) {
@@ -84,15 +95,25 @@ if (is_wp_error($collection_data)) {
         
         // Prepara parâmetros da API
         $api_params = [
-            'perpage' => $atts['limit'],
+            'perpage' => intval($atts['limit']),
             'paged' => 1,
-            'fetch_only' => 'title,description,thumbnail',
-            'fetch_only_meta' => implode(',', array_values($mapping['mapping_data']))
+            'fetch_only' => 'title,description,thumbnail,document,url'
         ];
+        
+        // Adiciona metadados necessários
+        $required_metadata = array_filter(array_values($mapping['mapping_data']));
+        if (!empty($required_metadata)) {
+            $api_params['fetch_only_meta'] = implode(',', $required_metadata);
+        }
         
         // Adiciona filtros se especificado
         if (!empty($atts['filter'])) {
             $api_params['metaquery'] = $this->parse_filter($atts['filter']);
+        }
+        
+        // Aplica filtros do mapeamento
+        if (!empty($mapping['filter_rules'])) {
+            $api_params = TEI_Metadata_Mapper::apply_filters($api_params, $mapping['filter_rules']);
         }
         
         // Faz requisição à API do Tainacan
@@ -127,7 +148,10 @@ if (is_wp_error($collection_data)) {
         $link_field = $mapping['mapping_data']['link'] ?? '';
         $category_field = $mapping['mapping_data']['category'] ?? '';
         
-        foreach ($collection_data['items'] as $item) {
+        // Processa cada item
+        $items = $collection_data['items'] ?? $collection_data;
+        
+        foreach ($items as $item) {
             // Extrai coordenadas
             $coordinates = $this->extract_coordinates($item, $location_field);
             
@@ -137,11 +161,11 @@ if (is_wp_error($collection_data)) {
             
             // Prepara propriedades do marcador
             $properties = [
-                'id' => $item['id'],
-                'title' => $this->get_field_value($item, $title_field, $item['title']),
+                'id' => $item['id'] ?? '',
+                'title' => $this->get_field_value($item, $title_field, $item['title'] ?? ''),
                 'description' => $this->get_field_value($item, $description_field, ''),
                 'image' => $this->get_image_url($item, $image_field),
-                'link' => $this->get_field_value($item, $link_field, $item['url']),
+                'link' => $this->get_field_value($item, $link_field, $item['url'] ?? ''),
                 'category' => $this->get_field_value($item, $category_field, ''),
                 'popup_html' => ''
             ];
@@ -177,7 +201,7 @@ if (is_wp_error($collection_data)) {
             return null;
         }
         
-        // Usa TEI_Sanitizer para coordenadas
+        // Tenta extrair coordenadas do valor
         $coords = TEI_Sanitizer::sanitize($location_value, 'coordinates');
         
         if ($coords) {
@@ -197,19 +221,12 @@ if (is_wp_error($collection_data)) {
      */
     private function geocode_address($address) {
         // Verifica cache
-        $cache_key = 'tei_geocode_' . md5($address);
+        $cache_key = 'geocode_' . md5($address);
         $cached = TEI_Cache_Manager::get($cache_key);
         
         if ($cached !== false) {
             return $cached;
         }
-        
-        // Obtém configurações
-        $settings = get_option('tei_settings', []);
-        $service = $settings['geocoding_service'] ?? 'nominatim';
-        $api_key = $settings['geocoding_api_key'] ?? '';
-        
-        $coordinates = null;
         
         // Usa API handler para geocoding
         $api = new TEI_API_Handler();
@@ -219,9 +236,10 @@ if (is_wp_error($collection_data)) {
             $coordinates = [$result['lon'], $result['lat']];
             // Cache por 30 dias
             TEI_Cache_Manager::set($cache_key, $coordinates, 30 * DAY_IN_SECONDS);
+            return $coordinates;
         }
         
-        return $coordinates;
+        return null;
     }
     
     /**
@@ -233,23 +251,42 @@ if (is_wp_error($collection_data)) {
         }
         
         // Verifica metadados
-        if (isset($item['metadata'][$field_id])) {
-            $value = $item['metadata'][$field_id]['value'] ?? $default;
+        if (isset($item['metadata']) && isset($item['metadata'][$field_id])) {
+            $metadata = $item['metadata'][$field_id];
+            
+            // Diferentes formatos possíveis
+            if (isset($metadata['value'])) {
+                $value = $metadata['value'];
+            } elseif (isset($metadata['value_as_string'])) {
+                $value = $metadata['value_as_string'];
+            } else {
+                $value = $metadata;
+            }
             
             // Se for array, pega o primeiro valor
             if (is_array($value) && !empty($value)) {
-                return $value[0];
+                return reset($value);
             }
             
             return $value;
         }
         
-        // Verifica campos padrão
+        // Verifica campos padrão do item
         if (isset($item[$field_id])) {
             return $item[$field_id];
         }
         
-        return $default;
+        // Campos especiais
+        switch ($field_id) {
+            case 'title':
+                return $item['title'] ?? $default;
+            case 'description':
+                return $item['description'] ?? $item['excerpt'] ?? $default;
+            case 'thumbnail':
+                return isset($item['thumbnail']) ? $item['thumbnail']['medium'] ?? '' : $default;
+            default:
+                return $default;
+        }
     }
     
     /**
@@ -259,24 +296,30 @@ if (is_wp_error($collection_data)) {
         // Primeiro tenta o campo especificado
         if (!empty($image_field)) {
             $image_value = $this->get_field_value($item, $image_field);
+            
             if (!empty($image_value)) {
+                // Se for ID de attachment
                 if (is_numeric($image_value)) {
                     $image_url = wp_get_attachment_image_url($image_value, 'medium');
                     if ($image_url) {
                         return $image_url;
                     }
-                } elseif (filter_var($image_value, FILTER_VALIDATE_URL)) {
+                }
+                // Se já for URL
+                elseif (filter_var($image_value, FILTER_VALIDATE_URL)) {
                     return $image_value;
                 }
             }
         }
         
         // Fallback para thumbnail do item
-        if (isset($item['thumbnail']['medium'])) {
-            return $item['thumbnail']['medium'];
+        if (isset($item['thumbnail'])) {
+            if (is_array($item['thumbnail'])) {
+                return $item['thumbnail']['medium'] ?? $item['thumbnail']['full'] ?? '';
+            }
+            return $item['thumbnail'];
         }
         
-        // Placeholder
         return '';
     }
     
@@ -293,10 +336,9 @@ if (is_wp_error($collection_data)) {
         }
         
         $html .= '<div class="tei-popup-content">';
-        $html .= '<h3 class="tei-popup-title">' . esc_html($properties['title']) . '</h3>';
         
-        if (!empty($properties['category'])) {
-            $html .= '<span class="tei-popup-category">' . esc_html($properties['category']) . '</span>';
+        if (!empty($properties['title'])) {
+            $html .= '<h3 class="tei-popup-title">' . esc_html($properties['title']) . '</h3>';
         }
         
         if (!empty($properties['description'])) {
@@ -304,13 +346,14 @@ if (is_wp_error($collection_data)) {
         }
         
         if (!empty($properties['link'])) {
-            $html .= '<a href="' . esc_url($properties['link']) . '" class="tei-popup-link" target="_blank">';
+            $html .= '<div class="tei-popup-link">';
+            $html .= '<a href="' . esc_url($properties['link']) . '" target="_blank" class="tei-popup-button">';
             $html .= __('Ver mais detalhes', 'tainacan-explorador');
             $html .= '</a>';
+            $html .= '</div>';
         }
         
-        $html .= '</div>';
-        $html .= '</div>';
+        $html .= '</div></div>';
         
         return $html;
     }
@@ -322,32 +365,19 @@ if (is_wp_error($collection_data)) {
         $settings = $mapping['visualization_settings'] ?? [];
         
         $config = [
-            'zoom' => $atts['zoom'],
-            'style' => $atts['style'],
-            'cluster' => $atts['cluster'],
-            'fullscreen' => $atts['fullscreen'],
+            'zoom' => intval($atts['zoom']),
             'center' => $this->parse_center($atts['center']),
-            'tile_layer' => $this->get_tile_layer($atts['style']),
-            'cluster_options' => [
-                'maxClusterRadius' => $settings['cluster_radius'] ?? 80,
-                'spiderfyOnMaxZoom' => true,
-                'showCoverageOnHover' => true,
-                'zoomToBoundsOnClick' => true
-            ],
-            'marker_options' => [
-                'icon_url' => $settings['custom_icon'] ?? '',
-                'icon_size' => $settings['icon_size'] ?? [32, 32],
-                'icon_anchor' => $settings['icon_anchor'] ?? [16, 32],
-                'popup_anchor' => [0, -32]
-            ],
-            'controls' => [
-                'zoom' => true,
-                'fullscreen' => $atts['fullscreen'],
-                'layers' => false,
-                'scale' => true,
-                'attribution' => true
-            ]
+            'style' => $atts['style'],
+            'cluster' => filter_var($atts['cluster'], FILTER_VALIDATE_BOOLEAN),
+            'fullscreen' => filter_var($atts['fullscreen'], FILTER_VALIDATE_BOOLEAN),
+            'scrollWheelZoom' => $settings['scroll_zoom'] ?? true,
+            'dragging' => $settings['dragging'] ?? true,
+            'doubleClickZoom' => $settings['double_click_zoom'] ?? true,
+            'attribution' => $settings['attribution'] ?? '© OpenStreetMap contributors'
         ];
+        
+        // Tile layer baseado no estilo
+        $config['tileLayer'] = $this->get_tile_layer($config['style']);
         
         return apply_filters('tei_map_config', $config, $atts, $mapping);
     }
@@ -357,41 +387,56 @@ if (is_wp_error($collection_data)) {
      */
     private function parse_center($center) {
         if (empty($center)) {
-            return null;
+            return [-15.7801, -47.9292]; // Brasília como padrão
         }
         
         $coords = TEI_Sanitizer::sanitize($center, 'coordinates');
+        
         if ($coords) {
             return [$coords['lat'], $coords['lon']];
         }
         
-        return null;
+        return [-15.7801, -47.9292];
     }
     
     /**
-     * Obtém camada de tiles baseada no estilo
+     * Obtém tile layer baseado no estilo
      */
     private function get_tile_layer($style) {
         $layers = [
-            'streets' => [
-                'url' => 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                'attribution' => '© OpenStreetMap contributors'
-            ],
-            'satellite' => [
-                'url' => 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-                'attribution' => '© Esri'
-            ],
-            'terrain' => [
-                'url' => 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-                'attribution' => '© OpenTopoMap'
-            ],
-            'dark' => [
-                'url' => 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
-                'attribution' => '© Stadia Maps'
-            ]
+            'streets' => 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            'satellite' => 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            'terrain' => 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+            'dark' => 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+            'light' => 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
         ];
         
         return $layers[$style] ?? $layers['streets'];
+    }
+    
+    /**
+     * Parse de filtros
+     */
+    private function parse_filter($filter) {
+        // Implementar parser de filtros
+        // Formato: field:operator:value,field2:operator2:value2
+        $filters = [];
+        
+        if (!empty($filter)) {
+            $parts = explode(',', $filter);
+            foreach ($parts as $part) {
+                $filter_parts = explode(':', $part);
+                if (count($filter_parts) === 3) {
+                    $filters[] = [
+                        'key' => trim($filter_parts[0]),
+                        'compare' => trim($filter_parts[1]),
+                        'value' => trim($filter_parts[2])
+                    ];
+                }
+            }
+        }
+        
+        return $filters;
     }
     
     /**
@@ -400,57 +445,202 @@ if (is_wp_error($collection_data)) {
     private function render_map($map_id, $map_data, $config, $atts) {
         ob_start();
         ?>
-        <div class="tei-map-container <?php echo esc_attr($atts['class']); ?>" 
-     style="width: 100vw; height: 100vh; position: relative; margin: 0;">
+        <div class="tei-map-wrapper <?php echo esc_attr($atts['class']); ?>" 
+             style="width: <?php echo esc_attr($atts['width']); ?>; height: <?php echo esc_attr($atts['height']); ?>;">
             
             <div id="<?php echo esc_attr($map_id); ?>" 
-                 class="tei-map" 
-                 data-tei-map="true"
-                 data-tei-map-config='<?php echo esc_attr(wp_json_encode($config)); ?>'
-                 data-tei-map-data='<?php echo esc_attr(wp_json_encode($map_data)); ?>'
-                 style="height: 100%; width: 100%;">
-            </div>
-            
-            <div class="tei-loading-overlay">
-                <div class="tei-loading-content">
-                    <div class="tei-spinner"></div>
-                    <p><?php esc_html_e('Carregando mapa...', 'tainacan-explorador'); ?></p>
+                 class="tei-map-container" 
+                 style="width: 100%; height: 100%;"
+                 data-map-config='<?php echo esc_attr(wp_json_encode($config)); ?>'
+                 data-map-data='<?php echo esc_attr(wp_json_encode($map_data)); ?>'>
+                
+                <div class="tei-map-loading">
+                    <span class="spinner is-active"></span>
+                    <p><?php _e('Carregando mapa...', 'tainacan-explorador'); ?></p>
                 </div>
             </div>
+            
+            <?php if ($config['fullscreen']): ?>
+            <button class="tei-map-fullscreen" 
+                    aria-label="<?php esc_attr_e('Tela cheia', 'tainacan-explorador'); ?>"
+                    title="<?php esc_attr_e('Tela cheia', 'tainacan-explorador'); ?>">
+                <span class="dashicons dashicons-fullscreen-alt"></span>
+            </button>
+            <?php endif; ?>
+            
+            <?php if (!empty($map_data['features'])): ?>
+            <div class="tei-map-search">
+                <input type="text" 
+                       class="tei-map-search-input" 
+                       placeholder="<?php esc_attr_e('Buscar no mapa...', 'tainacan-explorador'); ?>">
+                <button class="tei-map-search-clear" style="display:none;">
+                    <span class="dashicons dashicons-no"></span>
+                </button>
+            </div>
+            <?php endif; ?>
         </div>
-        <?php
         
+        <script type="text/javascript">
+        (function() {
+            // Aguarda o carregamento do Leaflet
+            function initMap() {
+                if (typeof L === 'undefined' || !L.map) {
+                    setTimeout(initMap, 100);
+                    return;
+                }
+                
+                var mapId = '<?php echo esc_js($map_id); ?>';
+                var container = document.getElementById(mapId);
+                
+                if (!container) return;
+                
+                var config = JSON.parse(container.getAttribute('data-map-config'));
+                var data = JSON.parse(container.getAttribute('data-map-data'));
+                
+                // Inicializa o mapa
+                var map = L.map(mapId, {
+                    center: config.center,
+                    zoom: config.zoom,
+                    scrollWheelZoom: config.scrollWheelZoom,
+                    dragging: config.dragging,
+                    doubleClickZoom: config.doubleClickZoom
+                });
+                
+                // Adiciona tile layer
+                L.tileLayer(config.tileLayer, {
+                    attribution: config.attribution
+                }).addTo(map);
+                
+                // Adiciona marcadores
+                if (data.features && data.features.length > 0) {
+                    var markers = config.cluster ? L.markerClusterGroup() : L.featureGroup();
+                    
+                    data.features.forEach(function(feature) {
+                        if (feature.geometry && feature.geometry.coordinates) {
+                            var coords = [
+                                feature.geometry.coordinates[1], // lat
+                                feature.geometry.coordinates[0]  // lon
+                            ];
+                            
+                            var marker = L.marker(coords);
+                            
+                            if (feature.properties && feature.properties.popup_html) {
+                                marker.bindPopup(feature.properties.popup_html);
+                            }
+                            
+                            markers.addLayer(marker);
+                        }
+                    });
+                    
+                    map.addLayer(markers);
+                    
+                    // Ajusta o zoom para mostrar todos os marcadores
+                    if (data.features.length > 1) {
+                        map.fitBounds(markers.getBounds(), { padding: [50, 50] });
+                    }
+                }
+                
+                // Remove loading
+                container.querySelector('.tei-map-loading').style.display = 'none';
+            }
+            
+            // Inicia quando DOM estiver pronto
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initMap);
+            } else {
+                initMap();
+            }
+        })();
+        </script>
+        
+        <style>
+        .tei-map-wrapper {
+            position: relative;
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .tei-map-loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 1000;
+        }
+        
+        .tei-map-fullscreen {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            border: 2px solid rgba(0,0,0,0.2);
+            border-radius: 4px;
+            padding: 5px;
+            cursor: pointer;
+        }
+        
+        .tei-map-search {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: white;
+            border-radius: 4px;
+            padding: 5px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+        }
+        
+        .tei-map-search-input {
+            border: none;
+            padding: 5px 10px;
+            width: 200px;
+            outline: none;
+        }
+        
+        .tei-popup-image img {
+            max-width: 200px;
+            height: auto;
+            margin-bottom: 10px;
+        }
+        
+        .tei-popup-title {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        
+        .tei-popup-description {
+            margin-bottom: 10px;
+            color: #666;
+        }
+        
+        .tei-popup-button {
+            display: inline-block;
+            padding: 5px 15px;
+            background: #0073aa;
+            color: white;
+            text-decoration: none;
+            border-radius: 3px;
+        }
+        
+        .tei-popup-button:hover {
+            background: #005177;
+        }
+        </style>
+        <?php
         return ob_get_clean();
     }
     
     /**
-     * Renderiza mensagem de erro
+     * Renderiza erro
      */
     private function render_error($message) {
-        return sprintf(
-            '<div class="tei-error"><p>%s</p></div>',
-            esc_html($message)
-        );
-    }
-    
-    /**
-     * Parse de filtros
-     */
-    private function parse_filter($filter) {
-        $filters = [];
-        $parts = explode(',', $filter);
-        
-        foreach ($parts as $part) {
-            $filter_parts = explode(':', $part, 2);
-            if (count($filter_parts) === 2) {
-                $filters[] = [
-                    'key' => trim($filter_parts[0]),
-                    'value' => trim($filter_parts[1]),
-                    'compare' => '='
-                ];
-            }
-        }
-        
-        return $filters;
+        return '<div class="tei-error notice notice-error"><p>' . esc_html($message) . '</p></div>';
     }
 }
