@@ -545,4 +545,29 @@
         });
     });
 
+    // Previne desaparecimento de backgrounds
+document.addEventListener('DOMContentLoaded', function() {
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                const bg = mutation.target;
+                if (bg.classList.contains('tei-story-background')) {
+                    const style = bg.getAttribute('style');
+                    if (style && style.includes('background-image') && !style.includes('opacity')) {
+                        bg.style.opacity = '0.7';
+                        bg.style.visibility = 'visible';
+                    }
+                }
+            }
+        });
+    });
+    
+    document.querySelectorAll('.tei-story-background').forEach(bg => {
+        observer.observe(bg, { attributes: true });
+        // Força visibilidade inicial
+        bg.style.opacity = '0.7';
+        bg.style.visibility = 'visible';
+    });
+});
+
 })(window, document);
