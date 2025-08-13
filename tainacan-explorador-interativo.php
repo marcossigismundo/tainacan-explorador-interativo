@@ -87,13 +87,13 @@ final class TainacanExploradorInterativo {
      * Inicializa hooks
      */
     private function init_hooks() {
-        // Verifica dependências antes de tudo
+        // Verifica dependências
         add_action('plugins_loaded', [$this, 'check_dependencies'], 5);
         
         // Internacionalização
         add_action('plugins_loaded', [$this, 'load_textdomain'], 10);
         
-        // Se dependências OK, inicializa o plugin
+        // Inicializa o plugin
         add_action('plugins_loaded', [$this, 'init_plugin'], 15);
         
         // Admin
@@ -109,7 +109,7 @@ final class TainacanExploradorInterativo {
         // Shortcodes
         add_action('init', [$this, 'register_shortcodes']);
         
-        // AJAX - Registra apenas uma vez
+        // AJAX
         add_action('admin_init', [$this, 'register_ajax_handlers']);
         
         // Preview
@@ -135,9 +135,6 @@ final class TainacanExploradorInterativo {
         
         if (!$this->is_tainacan_active()) {
             add_action('admin_notices', [$this, 'show_dependency_notice']);
-            // Desativa funcionalidades mas não o plugin inteiro
-            remove_action('init', [$this, 'register_shortcodes']);
-            remove_action('rest_api_init', [$this, 'register_rest_routes']);
             return false;
         }
         
@@ -169,14 +166,12 @@ final class TainacanExploradorInterativo {
     }
     
     /**
-     * Inicializa o plugin se dependências OK
+     * Inicializa o plugin
      */
     public function init_plugin() {
         if (!$this->dependencies_checked || !$this->is_tainacan_active()) {
             return;
         }
-        
-        // Inicialização adicional aqui se necessário
     }
     
     /**
@@ -212,11 +207,18 @@ final class TainacanExploradorInterativo {
             return;
         }
         
-        // WordPress admin styles
+        // Estilos
         wp_enqueue_style('wp-components');
+        wp_enqueue_style(
+            'tei-admin-styles',
+            TEI_PLUGIN_URL . 'assets/css/admin.css',
+            ['wp-components'],
+            TEI_VERSION
+        );
         
-        // React e dependências
+        // Scripts
         $deps = [
+            'jquery',
             'wp-element',
             'wp-components', 
             'wp-api-fetch',
@@ -225,7 +227,6 @@ final class TainacanExploradorInterativo {
             'wp-data'
         ];
         
-        // Admin script
         wp_enqueue_script(
             'tei-admin-react',
             TEI_PLUGIN_URL . 'assets/js/admin.js',
@@ -234,21 +235,13 @@ final class TainacanExploradorInterativo {
             true
         );
         
-        // CSS administrativo
-        wp_enqueue_style(
-            'tei-admin-styles',
-            TEI_PLUGIN_URL . 'assets/css/admin.css',
-            ['wp-components'],
-            TEI_VERSION
-        );
-        
-        // Localização
+        // Localização - CORREÇÃO: garantir que todos os valores sejam strings
         wp_localize_script('tei-admin-react', 'teiAdmin', [
-            'apiUrl' => rest_url('tainacan-explorador/v1/'),
-            'nonce' => wp_create_nonce('wp_rest'),
-            'ajaxUrl' => admin_url('admin-ajax.php'),
-            'ajaxNonce' => wp_create_nonce('tei_admin'),
-            'pluginUrl' => TEI_PLUGIN_URL,
+            'apiUrl' => (string) rest_url('tainacan-explorador/v1/'),
+            'nonce' => (string) wp_create_nonce('wp_rest'),
+            'ajaxUrl' => (string) admin_url('admin-ajax.php'),
+            'ajaxNonce' => (string) wp_create_nonce('tei_admin'),
+            'pluginUrl' => (string) TEI_PLUGIN_URL,
             'translations' => [
                 'loading' => __('Carregando...', 'tainacan-explorador'),
                 'error' => __('Erro ao carregar dados', 'tainacan-explorador'),
@@ -259,7 +252,7 @@ final class TainacanExploradorInterativo {
     }
     
     /**
-     * Registra AJAX handlers - CORRIGIDO para evitar duplicação
+     * Registra AJAX handlers
      */
     public function register_ajax_handlers() {
         if (!class_exists('TEI_Ajax_Handler') || $this->ajax_handler !== null) {
@@ -268,7 +261,6 @@ final class TainacanExploradorInterativo {
         
         $this->ajax_handler = new TEI_Ajax_Handler();
         
-        // Handlers para usuários logados
         $ajax_actions = [
             'tei_get_collections' => 'get_collections',
             'tei_get_metadata' => 'get_metadata',
@@ -282,33 +274,23 @@ final class TainacanExploradorInterativo {
             add_action('wp_ajax_' . $action, [$this->ajax_handler, $method]);
         }
         
-        // Permite acesso público apenas para visualização
         add_action('wp_ajax_nopriv_tei_get_collections', [$this->ajax_handler, 'get_collections']);
-    }
-    
-    /**
-     * Handler para limpeza de cache
-     */
-    public function handle_clear_cache() {
-        if (!wp_verify_nonce($_GET['_wpnonce'] ?? '', 'tei_clear_cache')) {
-            wp_die(__('Nonce inválido', 'tainacan-explorador'));
-        }
-        
-        if (!current_user_can('manage_options')) {
-            wp_die(__('Permissão negada', 'tainacan-explorador'));
-        }
-        
-        TEI_Cache_Manager::clear_all();
-        
-        wp_redirect(add_query_arg('cache_cleared', '1', wp_get_referer()));
-        exit;
     }
     
     /**
      * Registra endpoint de preview
      */
     public function register_preview_endpoint() {
-        add_rewrite_endpoint('tei-preview', EP_ROOT);
+        add_rewrite_rule(
+            '^tei-preview/?$',
+            'index.php?tei_preview=1',
+            'top'
+        );
+        
+        add_filter('query_vars', function($vars) {
+            $vars[] = 'tei_preview';
+            return $vars;
+        });
     }
     
     /**
@@ -346,53 +328,37 @@ final class TainacanExploradorInterativo {
             wp_head(); 
             ?>
             <style>
-                body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+                body { margin: 0; padding: 0; }
                 .preview-header { 
                     background: #f0f0f1; 
                     padding: 15px; 
-                    border-bottom: 1px solid #c3c4c7; 
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    z-index: 10000;
+                    border-bottom: 1px solid #c3c4c7;
                 }
-                .preview-title { margin: 0; font-size: 18px; color: #1d2327; }
-                .preview-close { float: right; text-decoration: none; color: #787c82; }
-                .preview-close:hover { color: #2271b1; }
                 .preview-container { 
-                    margin-top: 60px;
-                    width: 100%;
-                    height: calc(100vh - 60px);
+                    padding: 20px;
                 }
             </style>
         </head>
         <body>
             <div class="preview-header">
-                <a href="#" class="preview-close" onclick="window.close()">✕ <?php _e('Fechar', 'tainacan-explorador'); ?></a>
-                <h1 class="preview-title">
-                    <?php echo sprintf(__('Preview: %s - Coleção #%d', 'tainacan-explorador'), ucfirst($type), $collection_id); ?>
-                </h1>
+                <button onclick="window.close()" style="float:right">✕ Fechar</button>
+                <h1><?php echo sprintf(__('Preview: %s', 'tainacan-explorador'), ucfirst($type)); ?></h1>
             </div>
-            
             <div class="preview-container">
                 <?php
                 switch($type) {
                     case 'map':
-                        echo do_shortcode('[tainacan_explorador_mapa collection="' . $collection_id . '" height="100%" width="100%"]');
+                        echo do_shortcode('[tainacan_explorador_mapa collection="' . $collection_id . '"]');
                         break;
                     case 'timeline':
-                        echo do_shortcode('[tainacan_explorador_timeline collection="' . $collection_id . '" height="100%"]');
+                        echo do_shortcode('[tainacan_explorador_timeline collection="' . $collection_id . '"]');
                         break;
                     case 'story':
-                        echo do_shortcode('[tainacan_explorador_story collection="' . $collection_id . '" height="100%"]');
+                        echo do_shortcode('[tainacan_explorador_story collection="' . $collection_id . '"]');
                         break;
-                    default:
-                        echo '<p style="padding: 20px;">' . __('Tipo de visualização inválido', 'tainacan-explorador') . '</p>';
                 }
                 ?>
             </div>
-            
             <?php wp_footer(); ?>
         </body>
         </html>
@@ -446,13 +412,14 @@ final class TainacanExploradorInterativo {
         
         if ($has_map || $has_timeline || $has_story) {
             wp_enqueue_style('tei-common', TEI_PLUGIN_URL . 'assets/css/common.css', [], TEI_VERSION);
-            wp_enqueue_script('tei-common', TEI_PLUGIN_URL . 'assets/js/common.js', ['wp-api-fetch'], TEI_VERSION, true);
+            wp_enqueue_script('tei-common', TEI_PLUGIN_URL . 'assets/js/common.js', ['jquery'], TEI_VERSION, true);
             
+            // CORREÇÃO: garantir que todos os valores sejam strings
             wp_localize_script('tei-common', 'teiConfig', [
-                'apiUrl' => rest_url('tainacan-explorador/v1/'),
-                'nonce' => wp_create_nonce('wp_rest'),
-                'ajaxUrl' => admin_url('admin-ajax.php'),
-                'pluginUrl' => TEI_PLUGIN_URL
+                'apiUrl' => (string) rest_url('tainacan-explorador/v1/'),
+                'nonce' => (string) wp_create_nonce('wp_rest'),
+                'ajaxUrl' => (string) admin_url('admin-ajax.php'),
+                'pluginUrl' => (string) TEI_PLUGIN_URL
             ]);
         }
         
@@ -481,37 +448,29 @@ final class TainacanExploradorInterativo {
      * Ativação do plugin
      */
     public static function activate() {
-        // Cria tabelas
         if (class_exists('TEI_Metadata_Mapper')) {
             TEI_Metadata_Mapper::create_tables();
         }
         
-        // Adiciona capability
         $role = get_role('administrator');
         if ($role) {
             $role->add_cap('manage_tainacan_explorer');
         }
         
-        // Flush rewrite rules
         flush_rewrite_rules();
-        
-        // Versão
         update_option('tei_version', TEI_VERSION);
         
-        // Cria diretório de cache
         $upload_dir = wp_upload_dir();
         $cache_dir = $upload_dir['basedir'] . '/tainacan-explorer-cache';
         if (!file_exists($cache_dir)) {
             wp_mkdir_p($cache_dir);
             
-            // Protege diretório
             $htaccess = $cache_dir . '/.htaccess';
             if (!file_exists($htaccess)) {
                 file_put_contents($htaccess, 'Deny from all');
             }
         }
         
-        // Agenda limpeza de cache
         if (!wp_next_scheduled('tei_cache_cleanup')) {
             wp_schedule_event(time(), 'daily', 'tei_cache_cleanup');
         }
@@ -521,15 +480,11 @@ final class TainacanExploradorInterativo {
      * Desativação do plugin
      */
     public static function deactivate() {
-        // Limpa cache
         if (class_exists('TEI_Cache_Manager')) {
             TEI_Cache_Manager::clear_all();
         }
         
-        // Remove agendamentos
         wp_clear_scheduled_hook('tei_cache_cleanup');
-        
-        // Flush rewrite rules
         flush_rewrite_rules();
     }
     
@@ -537,22 +492,18 @@ final class TainacanExploradorInterativo {
      * Desinstalação do plugin
      */
     public static function uninstall() {
-        // Remove tabelas
         if (class_exists('TEI_Metadata_Mapper')) {
             TEI_Metadata_Mapper::drop_tables();
         }
         
-        // Remove opções
         delete_option('tei_version');
         delete_option('tei_settings');
         
-        // Remove capabilities
         $role = get_role('administrator');
         if ($role) {
             $role->remove_cap('manage_tainacan_explorer');
         }
         
-        // Remove diretório de cache
         $upload_dir = wp_upload_dir();
         $cache_dir = $upload_dir['basedir'] . '/tainacan-explorer-cache';
         if (file_exists($cache_dir) && class_exists('TEI_Cache_Manager')) {
@@ -571,9 +522,9 @@ add_action('plugins_loaded', function() {
     TainacanExploradorInterativo::get_instance();
 }, 1);
 
-// Link de configurações na lista de plugins
+// Link de configurações
 add_filter('plugin_action_links_' . TEI_PLUGIN_BASENAME, function($links) {
-    $settings_link = '<a href="' . admin_url('admin.php?page=tainacan-explorador') . '">' 
+    $settings_link = '<a href="' . esc_url(admin_url('admin.php?page=tainacan-explorador')) . '">' 
         . __('Configurações', 'tainacan-explorador') . '</a>';
     array_unshift($links, $settings_link);
     return $links;
