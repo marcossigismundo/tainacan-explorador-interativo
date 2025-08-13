@@ -318,7 +318,7 @@ if (is_wp_error($story_data)) {
     private function render_story($story_id, $story_data, $config, $atts) {
         ob_start();
         ?>
-        <div class="tei-story-container <?php echo esc_attr($atts['class']); ?>" 
+        <div class="tei-story-container <?php echo esc_attr($atts['class']); ?> 
 <style>
     /* Força backgrounds sempre visíveis */
     .tei-story-background[data-background-type="image"] {
@@ -339,7 +339,7 @@ if (is_wp_error($story_data)) {
         transform: none !important;
         will-change: auto !important;
     }
-</style>
+</style>"
             
              data-story-id="<?php echo esc_attr($story_id); ?>"
              data-tei-story="true"
