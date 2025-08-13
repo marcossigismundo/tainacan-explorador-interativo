@@ -250,25 +250,31 @@ class TEI_Mapa_Shortcode {
             return $default;
         }
         
-        // Verifica metadados
-        if (isset($item['metadata']) && isset($item['metadata'][$field_id])) {
-            $metadata = $item['metadata'][$field_id];
-            
-            // Diferentes formatos possíveis
-            if (isset($metadata['value'])) {
-                $value = $metadata['value'];
-            } elseif (isset($metadata['value_as_string'])) {
-                $value = $metadata['value_as_string'];
-            } else {
-                $value = $metadata;
+        // Debug
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log("TEI Debug - Getting field: $field_id from item " . $item['id']);
+            if (isset($item['metadata'])) {
+                error_log("TEI Debug - Available metadata keys: " . json_encode(array_keys($item['metadata'])));
+            }
+        }
+        
+        // Verifica metadados - tenta várias formas
+        if (isset($item['metadata'])) {
+            // Tenta ID direto
+            if (isset($item['metadata'][$field_id])) {
+                $value = $this->extract_metadata_value($item['metadata'][$field_id]);
+                if ($value !== null) return $value;
             }
             
-            // Se for array, pega o primeiro valor
-            if (is_array($value) && !empty($value)) {
-                return reset($value);
+            // Tenta buscar em todos os metadados (caso o ID não bata)
+            foreach ($item['metadata'] as $key => $metadata) {
+                if ($key == $field_id || 
+                    (isset($metadata['id']) && $metadata['id'] == $field_id) ||
+                    (isset($metadata['slug']) && $metadata['slug'] == $field_id)) {
+                    $value = $this->extract_metadata_value($metadata);
+                    if ($value !== null) return $value;
+                }
             }
-            
-            return $value;
         }
         
         // Verifica campos padrão do item
@@ -284,9 +290,42 @@ class TEI_Mapa_Shortcode {
                 return $item['description'] ?? $item['excerpt'] ?? $default;
             case 'thumbnail':
                 return isset($item['thumbnail']) ? $item['thumbnail']['medium'] ?? '' : $default;
+            case 'document':
+                return $item['document'] ?? $default;
             default:
                 return $default;
         }
+    }
+    
+    /**
+     * Extrai valor de um metadado
+     */
+    private function extract_metadata_value($metadata) {
+        if (!is_array($metadata)) {
+            return $metadata ?: null;
+        }
+        
+        // Tenta diferentes estruturas
+        if (isset($metadata['value'])) {
+            $value = $metadata['value'];
+        } elseif (isset($metadata['value_as_string'])) {
+            $value = $metadata['value_as_string'];
+        } elseif (isset($metadata['value_as_html'])) {
+            $value = strip_tags($metadata['value_as_html']);
+        } else {
+            // Se não tem estrutura esperada, retorna null
+            return null;
+        }
+        
+        // Se for array, pega o primeiro valor
+        if (is_array($value)) {
+            if (!empty($value)) {
+                return reset($value);
+            }
+            return null;
+        }
+        
+        return $value ?: null;
     }
     
     /**
