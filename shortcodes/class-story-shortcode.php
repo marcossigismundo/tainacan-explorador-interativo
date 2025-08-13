@@ -27,31 +27,31 @@ class TEI_Story_Shortcode {
             'transition_speed' => 800,
             'parallax' => false,
             'fullscreen' => true,
-            'cache' => false,
+            'cache' => true,
             'class' => '',
             'id' => 'tei-story-' . uniqid()
         ]);
         
-// Validação da coleção
-if (empty($atts['collection']) || !is_numeric($atts['collection'])) {
-    return $this->render_error(__('ID da coleção não especificado ou inválido.', 'tainacan-explorador'));
-}
-
-$collection_id = intval($atts['collection']);
-
-// Obtém mapeamento
-$mapping = TEI_Metadata_Mapper::get_mapping($collection_id, 'story');
-
-if (!$mapping) {
-    return $this->render_error(__('Mapeamento de storytelling não configurado para esta coleção.', 'tainacan-explorador'));
-}
-
-// Obtém dados da coleção
-$story_data = $this->get_story_data($collection_id, $mapping, $atts);
-
-if (is_wp_error($story_data)) {
-    return $this->render_error($story_data->get_error_message());
-}
+        // Validação da coleção
+        if (empty($atts['collection']) || !is_numeric($atts['collection'])) {
+            return $this->render_error(__('ID da coleção não especificado ou inválido.', 'tainacan-explorador'));
+        }
+        
+        $collection_id = intval($atts['collection']);
+        
+        // Obtém mapeamento
+        $mapping = TEI_Metadata_Mapper::get_mapping($collection_id, 'story');
+        
+        if (!$mapping) {
+            return $this->render_error(__('Mapeamento de storytelling não configurado para esta coleção.', 'tainacan-explorador'));
+        }
+        
+        // Obtém dados da coleção
+        $story_data = $this->get_story_data($collection_id, $mapping, $atts);
+        
+        if (is_wp_error($story_data)) {
+            return $this->render_error($story_data->get_error_message());
+        }
         
         // Gera configurações do storytelling
         $story_config = $this->get_story_config($atts, $mapping);
@@ -119,25 +119,19 @@ if (is_wp_error($story_data)) {
         $link_field = $mapping['mapping_data']['link'] ?? '';
         $order_field = $mapping['mapping_data']['order'] ?? '';
         
-        foreach ($response['items'] as $index => $item) {
+        $items = $response['items'] ?? $response;
+        
+        foreach ($items as $index => $item) {
             $chapter = [
-                'id' => 'chapter-' . $item['id'],
-                'index' => $index + 1,
-                'title' => TEI_Sanitizer::escape($this->get_field_value($item, $title_field, $item['title']), 'html'),
-                'subtitle' => TEI_Sanitizer::escape($this->get_field_value($item, $subtitle_field, ''), 'html'),
-                'content' => $this->format_content($item, $description_field),
-                'image' => $this->get_image_url($item, $image_field),
-                'background' => $this->get_background($item, $background_field, $image_field),
-                'link' => TEI_Sanitizer::escape($this->get_field_value($item, $link_field, $item['url']), 'url'),
-                'metadata' => $this->get_chapter_metadata($item, $mapping)
+                'id' => 'chapter-' . ($item['id'] ?? $index),
+                'title' => esc_html($this->get_field_value($item, $title_field, $item['title'] ?? '')),
+                'subtitle' => esc_html($this->get_field_value($item, $subtitle_field, '')),
+                'description' => wp_kses_post($this->get_field_value($item, $description_field, $item['description'] ?? '')),
+                'image' => esc_url($this->get_image_url($item, $image_field)),
+                'background' => esc_url($this->get_field_value($item, $background_field, '')),
+                'link' => esc_url($this->get_field_value($item, $link_field, $item['url'] ?? '')),
+                'order' => intval($this->get_field_value($item, $order_field, $index))
             ];
-            
-            // Adiciona ordem se especificada
-            if ($order_field) {
-                $chapter['order'] = intval($this->get_field_value($item, $order_field, $index));
-            } else {
-                $chapter['order'] = $index;
-            }
             
             $story_data['chapters'][] = $chapter;
         }
@@ -151,87 +145,6 @@ if (is_wp_error($story_data)) {
     }
     
     /**
-     * Formata conteúdo do capítulo
-     */
-    private function format_content($item, $description_field) {
-        $content = $this->get_field_value($item, $description_field, $item['description']);
-        
-        // Processa shortcodes se houver
-        $content = do_shortcode($content);
-        
-        // Aplica autop para parágrafos
-        $content = wpautop($content);
-        
-        return wp_kses_post($content);
-    }
-    
-    /**
-     * Obtém background do capítulo
-     */
-    private function get_background($item, $background_field, $image_field) {
-        $background = [
-            'type' => 'color',
-            'value' => '#ffffff'
-        ];
-        
-        // Primeiro tenta campo de background
-        if ($background_field) {
-            $bg_value = $this->get_field_value($item, $background_field);
-            
-            if ($bg_value) {
-                if (filter_var($bg_value, FILTER_VALIDATE_URL)) {
-                    $background = [
-                        'type' => 'image',
-                        'value' => TEI_Sanitizer::escape($bg_value, 'url')
-                    ];
-                } elseif (preg_match('/^#[0-9A-F]{6}$/i', $bg_value)) {
-                    $background = [
-                        'type' => 'color',
-                        'value' => TEI_Sanitizer::sanitize($bg_value, 'text')
-                    ];
-                } elseif (strpos($bg_value, 'gradient') !== false) {
-                    $background = [
-                        'type' => 'gradient',
-                        'value' => TEI_Sanitizer::sanitize($bg_value, 'text')
-                    ];
-                }
-            }
-        }
-        
-        // Fallback para imagem se não houver background
-        if ($background['type'] === 'color' && $background['value'] === '#ffffff') {
-            $image_url = $this->get_image_url($item, $image_field);
-            if ($image_url) {
-                $background = [
-                    'type' => 'image',
-                    'value' => $image_url
-                ];
-            }
-        }
-        
-        return $background;
-    }
-    
-    /**
-     * Obtém metadados adicionais do capítulo
-     */
-    private function get_chapter_metadata($item, $mapping) {
-        $metadata = [];
-        
-        // Adiciona metadados extras configurados
-        $extra_fields = $mapping['visualization_settings']['extra_fields'] ?? [];
-        
-        foreach ($extra_fields as $field_key => $field_label) {
-            $value = $this->get_field_value($item, $field_key);
-            if ($value) {
-                $metadata[TEI_Sanitizer::sanitize($field_label, 'text')] = TEI_Sanitizer::escape($value, 'html');
-            }
-        }
-        
-        return $metadata;
-    }
-    
-    /**
      * Obtém valor de um campo
      */
     private function get_field_value($item, $field_id, $default = '') {
@@ -239,21 +152,39 @@ if (is_wp_error($story_data)) {
             return $default;
         }
         
+        // Verifica metadados
         if (isset($item['metadata'][$field_id])) {
-            $value = $item['metadata'][$field_id]['value'] ?? $default;
+            $metadata = $item['metadata'][$field_id];
+            
+            if (isset($metadata['value'])) {
+                $value = $metadata['value'];
+            } elseif (isset($metadata['value_as_string'])) {
+                $value = $metadata['value_as_string'];
+            } else {
+                $value = $metadata;
+            }
             
             if (is_array($value) && !empty($value)) {
-                return $value[0];
+                return reset($value);
             }
             
             return $value;
         }
         
+        // Verifica campos padrão
         if (isset($item[$field_id])) {
             return $item[$field_id];
         }
         
-        return $default;
+        // Campos especiais
+        switch ($field_id) {
+            case 'title':
+                return $item['title'] ?? $default;
+            case 'description':
+                return $item['description'] ?? $item['excerpt'] ?? $default;
+            default:
+                return $default;
+        }
     }
     
     /**
@@ -262,24 +193,25 @@ if (is_wp_error($story_data)) {
     private function get_image_url($item, $image_field) {
         if (!empty($image_field)) {
             $image_value = $this->get_field_value($item, $image_field);
+            
             if (!empty($image_value)) {
                 if (is_numeric($image_value)) {
-                    $image_url = wp_get_attachment_image_url($image_value, 'full');
+                    $image_url = wp_get_attachment_image_url($image_value, 'large');
                     if ($image_url) {
                         return $image_url;
                     }
                 } elseif (filter_var($image_value, FILTER_VALIDATE_URL)) {
-                    return TEI_Sanitizer::escape($image_value, 'url');
+                    return $image_value;
                 }
             }
         }
         
-        if (isset($item['thumbnail']['full'][0])) {
-            return $item['thumbnail']['full'][0];
-        }
-        
-        if (isset($item['thumbnail']['tainacan-medium'][0])) {
-            return $item['thumbnail']['tainacan-medium'][0];
+        // Fallback para thumbnail
+        if (isset($item['thumbnail'])) {
+            if (is_array($item['thumbnail'])) {
+                return $item['thumbnail']['large'] ?? $item['thumbnail']['full'] ?? '';
+            }
+            return $item['thumbnail'];
         }
         
         return '';
@@ -298,199 +230,196 @@ if (is_wp_error($story_data)) {
             'autoplay_speed' => intval($atts['autoplay_speed']),
             'transition_speed' => intval($atts['transition_speed']),
             'parallax' => $atts['parallax'],
-            'fullscreen' => $atts['fullscreen'],
-            'loop' => $settings['loop'] ?? false,
-            'keyboard' => $settings['keyboard'] ?? true,
-            'touch' => $settings['touch'] ?? true,
-            'mousewheel' => $settings['mousewheel'] ?? false,
-            'progress' => $settings['show_progress'] ?? true,
-            'chapter_numbers' => $settings['show_numbers'] ?? true,
-            'social_share' => $settings['social_share'] ?? false,
-            'theme' => $settings['theme'] ?? 'light'
+            'fullscreen' => $atts['fullscreen']
         ];
         
         return apply_filters('tei_story_config', $config, $atts, $mapping);
     }
     
-/**
- * Renderiza o storytelling
- */
-private function render_story($story_id, $story_data, $config, $atts) {
-    ob_start();
-    ?>
-    <div class="tei-story-container <?php echo esc_attr($atts['class']); ?>" 
-         data-story-id="<?php echo esc_attr($story_id); ?>"
-         data-tei-story="true"
-         data-tei-story-config='<?php echo esc_attr(wp_json_encode($config)); ?>'
-         data-tei-story-data='<?php echo esc_attr(wp_json_encode($story_data)); ?>'>
-        
-        <style>
-            /* Força backgrounds sempre visíveis */
-            .tei-story-background[data-background-type="image"] {
-                opacity: 0.7 !important;
-                visibility: visible !important;
-                display: block !important;
-            }
+    /**
+     * Renderiza o storytelling
+     */
+    private function render_story($story_id, $story_data, $config, $atts) {
+        ob_start();
+        ?>
+        <div class="tei-story-wrapper <?php echo esc_attr($atts['class']); ?>" 
+             id="<?php echo esc_attr($story_id); ?>"
+             data-config='<?php echo esc_attr(wp_json_encode($config)); ?>'>
             
-            /* Preserva background-image */
-            .tei-story-background[style*="background-image"] {
-                background-size: cover !important;
-                background-position: center !important;
-                background-repeat: no-repeat !important;
-            }
-            
-            /* Desabilita animações que causam problema */
-            .tei-story-background {
-                transform: none !important;
-                will-change: auto !important;
-            }
-        </style>
-        
-        <?php if (!empty($story_data['title']) || !empty($story_data['description'])): ?>
-        <div class="tei-story-header">
-            <?php if (!empty($story_data['title'])): ?>
-            <h2 class="tei-story-title"><?php echo esc_html($story_data['title']); ?></h2>
-            <?php endif; ?>
-            
-            <?php if (!empty($story_data['description'])): ?>
-            <div class="tei-story-intro">
-                <?php echo wp_kses_post($story_data['description']); ?>
+            <?php if (!empty($story_data['title']) || !empty($story_data['description'])): ?>
+            <div class="tei-story-header">
+                <?php if (!empty($story_data['title'])): ?>
+                <h2 class="tei-story-title"><?php echo esc_html($story_data['title']); ?></h2>
+                <?php endif; ?>
+                
+                <?php if (!empty($story_data['description'])): ?>
+                <div class="tei-story-intro"><?php echo wp_kses_post($story_data['description']); ?></div>
+                <?php endif; ?>
             </div>
             <?php endif; ?>
-        </div>
-        <?php endif; ?>
-        
-        <?php if ($config['progress']): ?>
-        <div class="tei-story-progress">
-            <div class="tei-story-progress-bar"></div>
-        </div>
-        <?php endif; ?>
-        
-        <div id="<?php echo esc_attr($story_id); ?>" class="tei-story-wrapper">
-            <?php foreach ($story_data['chapters'] as $index => $chapter): ?>
-            <section class="tei-story-chapter" 
-                     data-chapter-id="<?php echo esc_attr($chapter['id']); ?>"
-                     data-chapter-index="<?php echo esc_attr($index); ?>">
-                
-                <div class="tei-story-background" 
-                     data-background-type="<?php echo esc_attr($chapter['background']['type']); ?>"
-                     <?php if ($chapter['background']['type'] === 'image'): ?>
-                     style="background-image: url('<?php echo esc_url($chapter['background']['value']); ?>');"
-                     <?php elseif ($chapter['background']['type'] === 'gradient'): ?>
-                     style="background: <?php echo esc_attr($chapter['background']['value']); ?>;"
-                     <?php else: ?>
-                     style="background-color: <?php echo esc_attr($chapter['background']['value']); ?>;"
-                     <?php endif; ?>>
-                </div>
-                
-                <div class="tei-story-content">
-                    <div class="tei-story-content-inner">
-                        <?php if ($config['chapter_numbers']): ?>
-                        <span class="tei-story-chapter-number">
-                            <?php echo sprintf('%02d', $chapter['index']); ?>
-                        </span>
-                        <?php endif; ?>
-                        
-                        <h3 class="tei-story-chapter-title">
-                            <?php echo esc_html($chapter['title']); ?>
-                        </h3>
-                        
-                        <?php if (!empty($chapter['subtitle'])): ?>
-                        <p class="tei-story-chapter-subtitle">
-                            <?php echo esc_html($chapter['subtitle']); ?>
-                        </p>
-                        <?php endif; ?>
-                        
-                        <?php if (!empty($chapter['image']) && $chapter['background']['type'] !== 'image'): ?>
-                        <div class="tei-story-image">
+            
+            <div class="tei-story-container">
+                <?php foreach ($story_data['chapters'] as $index => $chapter): ?>
+                <section class="tei-story-chapter" 
+                         id="<?php echo esc_attr($chapter['id']); ?>"
+                         data-index="<?php echo esc_attr($index); ?>">
+                    
+                    <?php if (!empty($chapter['background'])): ?>
+                    <div class="tei-chapter-background" 
+                         style="background-image: url('<?php echo esc_url($chapter['background']); ?>');">
+                    </div>
+                    <?php endif; ?>
+                    
+                    <div class="tei-chapter-content">
+                        <?php if (!empty($chapter['image'])): ?>
+                        <div class="tei-chapter-media">
                             <img src="<?php echo esc_url($chapter['image']); ?>" 
                                  alt="<?php echo esc_attr($chapter['title']); ?>">
                         </div>
                         <?php endif; ?>
                         
-                        <div class="tei-story-text">
-                            <?php echo $chapter['content']; ?>
-                        </div>
-                        
-                        <?php if (!empty($chapter['metadata'])): ?>
-                        <div class="tei-story-metadata">
-                            <?php foreach ($chapter['metadata'] as $label => $value): ?>
-                            <div class="tei-story-meta-item">
-                                <span class="tei-story-meta-label"><?php echo esc_html($label); ?>:</span>
-                                <span class="tei-story-meta-value"><?php echo esc_html($value); ?></span>
+                        <div class="tei-chapter-text">
+                            <?php if (!empty($chapter['title'])): ?>
+                            <h3 class="tei-chapter-title"><?php echo esc_html($chapter['title']); ?></h3>
+                            <?php endif; ?>
+                            
+                            <?php if (!empty($chapter['subtitle'])): ?>
+                            <h4 class="tei-chapter-subtitle"><?php echo esc_html($chapter['subtitle']); ?></h4>
+                            <?php endif; ?>
+                            
+                            <?php if (!empty($chapter['description'])): ?>
+                            <div class="tei-chapter-description">
+                                <?php echo wp_kses_post($chapter['description']); ?>
                             </div>
-                            <?php endforeach; ?>
+                            <?php endif; ?>
+                            
+                            <?php if (!empty($chapter['link'])): ?>
+                            <div class="tei-chapter-link">
+                                <a href="<?php echo esc_url($chapter['link']); ?>" 
+                                   target="_blank" 
+                                   class="tei-chapter-button">
+                                    <?php _e('Ver mais detalhes', 'tainacan-explorador'); ?>
+                                </a>
+                            </div>
+                            <?php endif; ?>
                         </div>
-                        <?php endif; ?>
-                        
-                        <?php if (!empty($chapter['link'])): ?>
-                        <a href="<?php echo esc_url($chapter['link']); ?>" 
-                           class="tei-story-link" 
-                           target="_blank">
-                            <?php esc_html_e('Ver mais detalhes', 'tainacan-explorador'); ?>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                <path d="M7 17L17 7M17 7H7M17 7V17"/>
-                            </svg>
-                        </a>
-                        <?php endif; ?>
                     </div>
-                </div>
-            </section>
-            <?php endforeach; ?>
-        </div>
-        
-        <?php if ($config['navigation'] !== 'none'): ?>
-        <nav class="tei-story-nav tei-story-nav-<?php echo esc_attr($config['navigation']); ?>">
-            <?php if ($config['navigation'] === 'dots' || $config['navigation'] === 'both'): ?>
-            <div class="tei-story-nav-dots">
+                </section>
+                <?php endforeach; ?>
+            </div>
+            
+            <?php if ($config['navigation'] !== 'none'): ?>
+            <div class="tei-story-navigation">
+                <?php if ($config['navigation'] === 'dots'): ?>
                 <div class="tei-story-dots">
                     <?php foreach ($story_data['chapters'] as $index => $chapter): ?>
                     <button class="tei-story-dot <?php echo $index === 0 ? 'active' : ''; ?>" 
-                            data-chapter="<?php echo esc_attr($index); ?>"
+                            data-index="<?php echo esc_attr($index); ?>"
                             aria-label="<?php echo esc_attr(sprintf(__('Ir para capítulo %d', 'tainacan-explorador'), $index + 1)); ?>">
                     </button>
                     <?php endforeach; ?>
                 </div>
-            </div>
-            <?php endif; ?>
-            
-            <?php if ($config['navigation'] === 'arrows' || $config['navigation'] === 'both'): ?>
-            <div class="tei-story-nav-arrows">
+                <?php endif; ?>
+                
+                <?php if ($config['navigation'] === 'arrows' || $config['navigation'] === 'both'): ?>
                 <button class="tei-story-prev" aria-label="<?php esc_attr_e('Capítulo anterior', 'tainacan-explorador'); ?>">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M15 18l-6-6 6-6"/>
-                    </svg>
+                    <span class="dashicons dashicons-arrow-left-alt2"></span>
                 </button>
                 <button class="tei-story-next" aria-label="<?php esc_attr_e('Próximo capítulo', 'tainacan-explorador'); ?>">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M9 18l6-6-6-6"/>
-                    </svg>
+                    <span class="dashicons dashicons-arrow-right-alt2"></span>
                 </button>
+                <?php endif; ?>
             </div>
             <?php endif; ?>
-        </nav>
-        <?php endif; ?>
+        </div>
         
-        <?php if ($config['fullscreen']): ?>
-        <button class="tei-story-fullscreen" aria-label="<?php esc_attr_e('Tela cheia', 'tainacan-explorador'); ?>">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
-            </svg>
-        </button>
-        <?php endif; ?>
-    </div>
-    <?php
-    
-    return ob_get_clean();
-}
+        <style>
+        .tei-story-wrapper {
+            position: relative;
+            width: 100%;
+        }
+        
+        .tei-story-chapter {
+            min-height: 100vh;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+        }
+        
+        .tei-chapter-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-size: cover;
+            background-position: center;
+            opacity: 0.3;
+            z-index: -1;
+        }
+        
+        .tei-chapter-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            align-items: center;
+        }
+        
+        .tei-chapter-media img {
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+        
+        .tei-chapter-title {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+        }
+        
+        .tei-chapter-subtitle {
+            font-size: 1.5em;
+            color: #666;
+            margin-bottom: 20px;
+        }
+        
+        .tei-chapter-description {
+            font-size: 1.1em;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+        
+        .tei-chapter-button {
+            display: inline-block;
+            padding: 12px 30px;
+            background: #0073aa;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: background 0.3s;
+        }
+        
+        .tei-chapter-button:hover {
+            background: #005177;
+        }
+        
+        @media (max-width: 768px) {
+            .tei-chapter-content {
+                grid-template-columns: 1fr;
+            }
+        }
+        </style>
+        <?php
+        return ob_get_clean();
+    }
     
     /**
-     * Renderiza mensagem de erro
+     * Renderiza erro
      */
     private function render_error($message) {
-        return sprintf(
-            '<div class="tei-error"><p>%s</p></div>',
-            esc_html($message)
-        );
+        return '<div class="tei-error notice notice-error"><p>' . esc_html($message) . '</p></div>';
     }
 }
