@@ -90,12 +90,7 @@
     overflow: hidden;
 }
 
-.tei-story-chapter.active .tei-story-content-inner {
-    opacity: 1;
-    transform: translateY(0);
-}
-
-/* Story Background */
+/* Story Background - CORRIGIDO */
 .tei-story-background {
     position: absolute;
     top: 0;
@@ -105,23 +100,14 @@
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    opacity: 0.7;
-    will-change: auto; /* Remover will-change: transform */
-    transition: opacity 0.8s ease; /* Remover transform da transição */
-}
-
-.tei-story-chapter .tei-story-background {
     opacity: 0.7 !important;
     visibility: visible !important;
-}
-
-.tei-story-chapter {
-    min-height: 100vh;
-    position: relative; /* em vez de position: relative */
+    transition: opacity 0.8s ease;
+    z-index: 1;
 }
 
 .tei-story-background[data-background-type="image"] {
-    opacity: 0.7;
+    opacity: 0.7 !important;
 }
 
 .tei-story-background[data-background-type="image"]::after {
@@ -134,8 +120,9 @@
     background: linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.6) 100%);
 }
 
+/* Removido transform scale que causava problema */
 .tei-story-chapter.active .tei-story-background {
-    transform: scale(1.05);
+    opacity: 0.8 !important;
 }
 
 /* Story Content */
@@ -156,6 +143,11 @@
     opacity: 0;
     transform: translateY(30px);
     transition: opacity 0.8s ease, transform 0.8s ease;
+}
+
+.tei-story-chapter.active .tei-story-content-inner {
+    opacity: 1;
+    transform: translateY(0);
 }
 
 /* Chapter Number */
@@ -515,8 +507,8 @@
     animation: chapterEnter 0.8s ease forwards;
 }
 
-/* Parallax Effects */
+/* Parallax Effects - DESABILITADO para evitar problemas */
 .tei-story-background[data-parallax="true"] {
-    will-change: transform;
-    transition: transform 1s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: auto;
+    transition: opacity 1s cubic-bezier(0.4, 0, 0.2, 1);
 }
