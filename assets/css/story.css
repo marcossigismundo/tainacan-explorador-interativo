@@ -105,7 +105,19 @@
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    transition: transform 0.8s ease, opacity 0.8s ease;
+    opacity: 0.7;
+    will-change: auto; /* Remover will-change: transform */
+    transition: opacity 0.8s ease; /* Remover transform da transição */
+}
+
+.tei-story-chapter .tei-story-background {
+    opacity: 0.7 !important;
+    visibility: visible !important;
+}
+
+.tei-story-chapter {
+    min-height: 100vh;
+    position: relative; /* em vez de position: relative */
 }
 
 .tei-story-background[data-background-type="image"] {
