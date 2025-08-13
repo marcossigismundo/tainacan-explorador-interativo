@@ -25,9 +25,9 @@ class TEI_Story_Shortcode {
             'autoplay' => false,
             'autoplay_speed' => 7000,
             'transition_speed' => 800,
-            'parallax' => true,
+            'parallax' => false,
             'fullscreen' => true,
-            'cache' => true,
+            'cache' => false,
             'class' => '',
             'id' => 'tei-story-' . uniqid()
         ]);
