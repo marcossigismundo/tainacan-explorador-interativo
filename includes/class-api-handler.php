@@ -213,7 +213,10 @@ class TEI_API_Handler {
         
         // Debug - mostra estrutura
         if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('TEI Debug - First item structure: ' . json_encode(array_keys($item)));
+            error_log('TEI Debug - Item keys: ' . json_encode(array_keys($item)));
+            if (isset($item['metadata'])) {
+                error_log('TEI Debug - Metadata structure: ' . json_encode($item['metadata']));
+            }
         }
         
         $normalized = [
@@ -228,53 +231,41 @@ class TEI_API_Handler {
             'metadata' => []
         ];
         
-        // Processa metadados - FORMATO CORRETO DO TAINACAN
-        if (isset($item['metadata']) && is_array($item['metadata'])) {
-            foreach ($item['metadata'] as $meta_key => $meta_data) {
-                // O Tainacan retorna metadados como array associativo
-                // onde a chave é o slug do metadado
+        // CORREÇÃO: Processa metadados no formato correto do Tainacan v2
+        // O Tainacan retorna metadados como objeto onde cada chave é o ID do metadado
+        if (isset($item['metadata']) && !empty($item['metadata'])) {
+            // Se metadata for objeto/array associativo
+            foreach ($item['metadata'] as $meta_id => $meta_data) {
+                // Cada metadado tem a estrutura: {id, name, value, value_as_html, value_as_string}
                 if (is_array($meta_data)) {
-                    // Estrutura típica: { "id": 123, "value": "...", "value_as_html": "...", "value_as_string": "..." }
-                    $meta_id = $meta_data['id'] ?? $meta_key;
-                    
                     $normalized['metadata'][$meta_id] = [
-                        'id' => $meta_id,
+                        'id' => $meta_data['id'] ?? $meta_id,
                         'name' => $meta_data['name'] ?? '',
                         'value' => $meta_data['value'] ?? '',
                         'value_as_html' => $meta_data['value_as_html'] ?? '',
                         'value_as_string' => $meta_data['value_as_string'] ?? ''
                     ];
                     
-                    // Também adiciona por slug para facilitar acesso
-                    if (isset($meta_data['slug'])) {
-                        $normalized['metadata'][$meta_data['slug']] = $normalized['metadata'][$meta_id];
+                    // Debug específico
+                    if (defined('WP_DEBUG') && WP_DEBUG) {
+                        error_log("TEI Debug - Metadata $meta_id: " . json_encode($normalized['metadata'][$meta_id]));
                     }
-                } else {
-                    // Valor direto (formato antigo ou simplificado)
-                    $normalized['metadata'][$meta_key] = [
-                        'id' => $meta_key,
-                        'name' => '',
-                        'value' => $meta_data,
-                        'value_as_html' => $meta_data,
-                        'value_as_string' => is_string($meta_data) ? $meta_data : json_encode($meta_data)
-                    ];
                 }
             }
         }
         
-        // Processa metadados em formato alternativo (se existir)
+        // Fallback: Tenta detectar metadados em outras chaves do item
+        // Alguns temas/configurações podem retornar metadados diretamente no item
         foreach ($item as $key => $value) {
-            // Detecta metadados por padrão de nomenclatura
-            if (strpos($key, 'metadata_') === 0 || preg_match('/^\d+$/', $key)) {
-                if (!isset($normalized['metadata'][$key])) {
-                    $normalized['metadata'][$key] = [
-                        'id' => $key,
-                        'name' => '',
-                        'value' => $value,
-                        'value_as_html' => is_string($value) ? $value : '',
-                        'value_as_string' => is_string($value) ? $value : json_encode($value)
-                    ];
-                }
+            // Padrão: chaves numéricas ou que começam com números são IDs de metadados
+            if (is_numeric($key) && !isset($normalized['metadata'][$key])) {
+                $normalized['metadata'][$key] = [
+                    'id' => $key,
+                    'name' => '',
+                    'value' => $value,
+                    'value_as_html' => is_string($value) ? $value : '',
+                    'value_as_string' => is_string($value) ? $value : json_encode($value)
+                ];
             }
         }
         
