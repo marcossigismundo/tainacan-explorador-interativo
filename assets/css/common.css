@@ -6,6 +6,101 @@
  * @version 1.0.0
  */
 
+
+
+/* Popup do Mapa - Layout Horizontal */
+.leaflet-popup-content {
+    width: 400px !important;
+    max-width: 400px !important;
+}
+
+.tei-map-popup {
+    display: flex;
+    gap: 15px;
+    align-items: flex-start;
+}
+
+.tei-popup-image {
+    flex: 0 0 150px;
+    width: 150px;
+    height: 120px;
+    overflow: hidden;
+    border-radius: 8px;
+}
+
+.tei-popup-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.tei-popup-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.tei-popup-title {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: #333;
+}
+
+.tei-popup-description {
+    margin-bottom: 12px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #666;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.tei-popup-button {
+    display: inline-block;
+    padding: 6px 16px;
+    background: #0073aa;
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+
+.tei-popup-button:hover {
+    background: #005177;
+    color: white;
+}
+
+/* Sem imagem - ajusta layout */
+.tei-map-popup:not(:has(.tei-popup-image)) {
+    display: block;
+}
+
+.tei-map-popup:not(:has(.tei-popup-image)) .tei-popup-content {
+    width: 100%;
+}
+
+/* Responsivo para popups */
+@media (max-width: 480px) {
+    .leaflet-popup-content {
+        width: 280px !important;
+        max-width: 280px !important;
+    }
+    
+    .tei-map-popup {
+        flex-direction: column;
+    }
+    
+    .tei-popup-image {
+        flex: none;
+        width: 100%;
+        height: 150px;
+    }
+}
+
 /* Reset básico para componentes TEI */
 .tei-map-container *,
 .tei-timeline-container *,
