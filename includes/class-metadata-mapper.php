@@ -1,6 +1,6 @@
 <?php
 /**
- * Classe responsável por gerenciar mapeamentos de metadados
+ * Mapeador de Metadados
  * 
  * @package TainacanExplorador
  * @since 1.0.0
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 class TEI_Metadata_Mapper {
     
     /**
-     * Nome da tabela de mapeamentos
+     * Nome da tabela
      */
     private static $table_name = 'tei_metadata_mappings';
     
@@ -34,27 +34,23 @@ class TEI_Metadata_Mapper {
             mapping_data longtext NOT NULL,
             visualization_settings longtext,
             filter_rules longtext,
+            status varchar(20) DEFAULT 'active',
+            created_by bigint(20) NOT NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            created_by bigint(20) NOT NULL,
-            status varchar(20) DEFAULT 'active',
             PRIMARY KEY (id),
             KEY collection_id (collection_id),
             KEY mapping_type (mapping_type),
-            KEY status (status)
+            KEY status (status),
+            KEY collection_type (collection_id, mapping_type)
         ) $charset_collate;";
         
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
         
-        // Verifica se o índice já existe antes de criar
-        $index_exists = $wpdb->get_var(
-            "SHOW INDEX FROM $table_name WHERE Key_name = 'idx_collection_type'"
-        );
-        
-        if (!$index_exists) {
-            $wpdb->query("CREATE INDEX idx_collection_type ON $table_name (collection_id, mapping_type)");
-        }
+        // Adiciona índices adicionais se não existirem
+        $wpdb->query("CREATE INDEX IF NOT EXISTS idx_collection_status ON $table_name (collection_id, status)");
+        $wpdb->query("CREATE INDEX IF NOT EXISTS idx_updated_at ON $table_name (updated_at)");
     }
     
     /**
@@ -62,44 +58,48 @@ class TEI_Metadata_Mapper {
      */
     public static function drop_tables() {
         global $wpdb;
+        
         $table_name = $wpdb->prefix . self::$table_name;
         $wpdb->query("DROP TABLE IF EXISTS $table_name");
     }
     
     /**
-     * Salva um mapeamento
+     * Salva mapeamento
      * 
      * @param array $data Dados do mapeamento
-     * @return int|false ID do mapeamento ou false em caso de erro
+     * @return int|WP_Error ID do mapeamento ou erro
      */
     public static function save_mapping($data) {
         global $wpdb;
         
-        // Validação de dados
+        // Validação básica
         if (empty($data['collection_id']) || empty($data['mapping_type'])) {
             return new WP_Error('invalid_data', __('Dados de mapeamento inválidos', 'tainacan-explorador'));
         }
         
-        // Sanitização
-        $collection_id = absint($data['collection_id']);
-        $mapping_type = sanitize_key($data['mapping_type']);
-        $collection_name = sanitize_text_field($data['collection_name'] ?? '');
-        $mapping_data = wp_json_encode($data['mapping_data'] ?? []);
-        $visualization_settings = wp_json_encode($data['visualization_settings'] ?? []);
-        $filter_rules = wp_json_encode($data['filter_rules'] ?? []);
-        $created_by = get_current_user_id();
-        
         $table_name = $wpdb->prefix . self::$table_name;
         
-        // Verifica se já existe um mapeamento para esta coleção e tipo
-        $existing = $wpdb->get_row($wpdb->prepare(
-            "SELECT id FROM $table_name WHERE collection_id = %d AND mapping_type = %s",
+        // Prepara dados
+        $collection_id = intval($data['collection_id']);
+        $collection_name = sanitize_text_field($data['collection_name'] ?? '');
+        $mapping_type = sanitize_key($data['mapping_type']);
+        $mapping_data = wp_json_encode($data['mapping_data'] ?? [], JSON_UNESCAPED_UNICODE);
+        $visualization_settings = wp_json_encode($data['visualization_settings'] ?? [], JSON_UNESCAPED_UNICODE);
+        $filter_rules = wp_json_encode($data['filter_rules'] ?? [], JSON_UNESCAPED_UNICODE);
+        $created_by = get_current_user_id();
+        
+        // Verifica se já existe mapeamento
+        $existing = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $table_name 
+             WHERE collection_id = %d 
+             AND mapping_type = %s 
+             AND status = 'active'",
             $collection_id,
             $mapping_type
         ));
         
         if ($existing) {
-            // Atualiza mapeamento existente
+            // Atualiza existente
             $result = $wpdb->update(
                 $table_name,
                 [
@@ -110,23 +110,27 @@ class TEI_Metadata_Mapper {
                     'updated_at' => current_time('mysql')
                 ],
                 [
-                    'id' => $existing->id
+                    'id' => $existing
                 ],
-                ['%s', '%s', '%s', '%s', '%s'],
-                ['%d']
+                [
+                    '%s', // collection_name
+                    '%s', // mapping_data
+                    '%s', // visualization_settings
+                    '%s', // filter_rules
+                    '%s'  // updated_at
+                ],
+                [
+                    '%d'  // id
+                ]
             );
             
             if ($result !== false) {
                 // Limpa cache
-                TEI_Cache_Manager::clear_collection_cache($collection_id);
-                
-                // Dispara hook
-                do_action('tei_mapping_updated', $existing->id, $data);
-                
-                return $existing->id;
+                wp_cache_delete('tei_mapping_' . $collection_id . '_' . $mapping_type, 'tei_mappings');
+                return intval($existing);
             }
         } else {
-            // Insere novo mapeamento
+            // Insere novo
             $result = $wpdb->insert(
                 $table_name,
                 [
@@ -136,87 +140,134 @@ class TEI_Metadata_Mapper {
                     'mapping_data' => $mapping_data,
                     'visualization_settings' => $visualization_settings,
                     'filter_rules' => $filter_rules,
+                    'status' => 'active',
                     'created_by' => $created_by,
                     'created_at' => current_time('mysql'),
                     'updated_at' => current_time('mysql')
                 ],
-                ['%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s']
+                [
+                    '%d', // collection_id
+                    '%s', // collection_name
+                    '%s', // mapping_type
+                    '%s', // mapping_data
+                    '%s', // visualization_settings
+                    '%s', // filter_rules
+                    '%s', // status
+                    '%d', // created_by
+                    '%s', // created_at
+                    '%s'  // updated_at
+                ]
             );
             
-            if ($result) {
-                $mapping_id = $wpdb->insert_id;
-                
-                // Limpa cache
-                TEI_Cache_Manager::clear_collection_cache($collection_id);
-                
-                // Dispara hook
-                do_action('tei_mapping_created', $mapping_id, $data);
-                
-                return $mapping_id;
+            if ($result !== false) {
+                return intval($wpdb->insert_id);
             }
         }
         
-        return false;
+        return new WP_Error('save_failed', __('Erro ao salvar mapeamento', 'tainacan-explorador'));
     }
     
-/**
- * Obtém um mapeamento específico
- * 
- * @param int $collection_id ID da coleção
- * @param string $mapping_type Tipo de mapeamento
- * @return array|null
- */
-public static function get_mapping($collection_id, $mapping_type = null) {
-    global $wpdb;
-    
-    $table_name = $wpdb->prefix . self::$table_name;
-    
-    // Cache key
-    $cache_key = 'tei_mapping_' . $collection_id . '_' . $mapping_type;
-    $cached = wp_cache_get($cache_key, 'tei_mappings');
-    
-    if ($cached !== false) {
-        return $cached;
-    }
-    
-    if ($mapping_type) {
-        $query = $wpdb->prepare(
-            "SELECT * FROM $table_name WHERE collection_id = %d AND mapping_type = %s AND status = 'active'",
-            $collection_id,
-            $mapping_type
-        );
-    } else {
-        $query = $wpdb->prepare(
-            "SELECT * FROM $table_name WHERE collection_id = %d AND status = 'active'",
-            $collection_id
-        );
-    }
-    
-    $result = $wpdb->get_row($query, ARRAY_A);
-    
-    if ($result) {
-        // Decodifica JSON com verificação
-        $result['mapping_data'] = json_decode($result['mapping_data'], true) ?: [];
-        $result['visualization_settings'] = json_decode($result['visualization_settings'], true) ?: [];
+    /**
+     * Obtém mapeamento
+     * 
+     * @param int $collection_id ID da coleção
+     * @param string $mapping_type Tipo de mapeamento
+     * @return array|null
+     */
+    public static function get_mapping($collection_id, $mapping_type = null) {
+        global $wpdb;
         
-        // Corrige o problema do filter_rules
-        if (!empty($result['filter_rules'])) {
-            $result['filter_rules'] = json_decode($result['filter_rules'], true) ?: [];
+        $table_name = $wpdb->prefix . self::$table_name;
+        
+        // Cache key
+        $cache_key = 'tei_mapping_' . $collection_id . '_' . $mapping_type;
+        $cached = wp_cache_get($cache_key, 'tei_mappings');
+        
+        if ($cached !== false) {
+            return $cached;
+        }
+        
+        // Query segura usando prepared statement
+        if ($mapping_type) {
+            $result = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT * FROM $table_name 
+                     WHERE collection_id = %d 
+                     AND mapping_type = %s 
+                     AND status = 'active'
+                     ORDER BY updated_at DESC
+                     LIMIT 1",
+                    $collection_id,
+                    $mapping_type
+                ),
+                ARRAY_A
+            );
         } else {
-            $result['filter_rules'] = [];
+            $result = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT * FROM $table_name 
+                     WHERE collection_id = %d 
+                     AND status = 'active'
+                     ORDER BY updated_at DESC
+                     LIMIT 1",
+                    $collection_id
+                ),
+                ARRAY_A
+            );
         }
         
-        // Adiciona metadados adicionais
-        if (!empty($result['created_by'])) {
-            $result['author'] = get_userdata($result['created_by']);
+        if ($result) {
+            // Decodifica JSON com verificação
+            $result['mapping_data'] = json_decode($result['mapping_data'], true) ?: [];
+            $result['visualization_settings'] = json_decode($result['visualization_settings'], true) ?: [];
+            $result['filter_rules'] = json_decode($result['filter_rules'], true) ?: [];
+            
+            // Adiciona metadados adicionais
+            if (!empty($result['created_by'])) {
+                $user = get_userdata($result['created_by']);
+                if ($user) {
+                    $result['author'] = [
+                        'id' => $user->ID,
+                        'name' => $user->display_name,
+                        'email' => $user->user_email
+                    ];
+                }
+            }
+            
+            // Cache por 1 hora
+            wp_cache_set($cache_key, $result, 'tei_mappings', HOUR_IN_SECONDS);
         }
         
-        // Cache por 1 hora
-        wp_cache_set($cache_key, $result, 'tei_mappings', HOUR_IN_SECONDS);
+        return $result;
     }
     
-    return $result;
-}
+    /**
+     * Obtém mapeamento por ID
+     * 
+     * @param int $mapping_id ID do mapeamento
+     * @return array|null
+     */
+    public static function get_mapping_by_id($mapping_id) {
+        global $wpdb;
+        
+        $table_name = $wpdb->prefix . self::$table_name;
+        
+        $result = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM $table_name WHERE id = %d",
+                $mapping_id
+            ),
+            ARRAY_A
+        );
+        
+        if ($result) {
+            $result['mapping_data'] = json_decode($result['mapping_data'], true) ?: [];
+            $result['visualization_settings'] = json_decode($result['visualization_settings'], true) ?: [];
+            $result['filter_rules'] = json_decode($result['filter_rules'], true) ?: [];
+        }
+        
+        return $result;
+    }
     
     /**
      * Obtém todos os mapeamentos
@@ -238,44 +289,61 @@ public static function get_mapping($collection_id, $mapping_type = null) {
         $args = wp_parse_args($args, $defaults);
         $table_name = $wpdb->prefix . self::$table_name;
         
-        $where_clauses = ["status = %s"];
-        $where_values = [$args['status']];
+        // Constrói query com prepared statements
+        $query = "SELECT * FROM $table_name WHERE 1=1";
+        $query_args = [];
         
+        // Status
+        if (!empty($args['status'])) {
+            $query .= " AND status = %s";
+            $query_args[] = $args['status'];
+        }
+        
+        // Collection ID
         if (!empty($args['collection_id'])) {
-            $where_clauses[] = "collection_id = %d";
-            $where_values[] = $args['collection_id'];
+            $query .= " AND collection_id = %d";
+            $query_args[] = intval($args['collection_id']);
         }
         
+        // Mapping type
         if (!empty($args['mapping_type'])) {
-            $where_clauses[] = "mapping_type = %s";
-            $where_values[] = $args['mapping_type'];
+            $query .= " AND mapping_type = %s";
+            $query_args[] = $args['mapping_type'];
         }
         
-        $where_sql = implode(' AND ', $where_clauses);
-        
-        // Sanitiza orderby e order
-        $orderby = in_array($args['orderby'], ['updated_at', 'created_at', 'id']) ? $args['orderby'] : 'updated_at';
+        // Ordenação (validada)
+        $allowed_orderby = ['id', 'collection_id', 'mapping_type', 'created_at', 'updated_at'];
+        $orderby = in_array($args['orderby'], $allowed_orderby) ? $args['orderby'] : 'updated_at';
         $order = strtoupper($args['order']) === 'ASC' ? 'ASC' : 'DESC';
+        $query .= " ORDER BY $orderby $order";
         
-        $query = $wpdb->prepare(
-            "SELECT * FROM $table_name WHERE $where_sql ORDER BY $orderby $order LIMIT %d OFFSET %d",
-            array_merge($where_values, [$args['limit'], $args['offset']])
-        );
+        // Limite e offset
+        $query .= " LIMIT %d OFFSET %d";
+        $query_args[] = intval($args['limit']);
+        $query_args[] = intval($args['offset']);
         
-        $results = $wpdb->get_results($query, ARRAY_A);
+        // Executa query
+        if (!empty($query_args)) {
+            $results = $wpdb->get_results(
+                $wpdb->prepare($query, ...$query_args),
+                ARRAY_A
+            );
+        } else {
+            $results = $wpdb->get_results($query, ARRAY_A);
+        }
         
         // Decodifica JSON para cada resultado
         foreach ($results as &$result) {
-            $result['mapping_data'] = json_decode($result['mapping_data'], true);
-            $result['visualization_settings'] = json_decode($result['visualization_settings'], true);
-            $result['filter_rules'] = json_decode($result['filter_rules'], true);
+            $result['mapping_data'] = json_decode($result['mapping_data'], true) ?: [];
+            $result['visualization_settings'] = json_decode($result['visualization_settings'], true) ?: [];
+            $result['filter_rules'] = json_decode($result['filter_rules'], true) ?: [];
         }
         
         return $results;
     }
     
     /**
-     * Deleta um mapeamento
+     * Deleta mapeamento
      * 
      * @param int $mapping_id ID do mapeamento
      * @return bool
@@ -285,32 +353,25 @@ public static function get_mapping($collection_id, $mapping_type = null) {
         
         $table_name = $wpdb->prefix . self::$table_name;
         
-        // Obtém dados antes de deletar para limpar cache
-        $mapping = $wpdb->get_row($wpdb->prepare(
-            "SELECT collection_id FROM $table_name WHERE id = %d",
-            $mapping_id
-        ));
-        
-        if (!$mapping) {
-            return false;
-        }
-        
         // Soft delete - apenas marca como inativo
         $result = $wpdb->update(
             $table_name,
-            ['status' => 'deleted', 'updated_at' => current_time('mysql')],
+            [
+                'status' => 'deleted',
+                'updated_at' => current_time('mysql')
+            ],
             ['id' => $mapping_id],
             ['%s', '%s'],
             ['%d']
         );
         
         if ($result !== false) {
-            // Limpa cache
-            TEI_Cache_Manager::clear_collection_cache($mapping->collection_id);
-            
-            // Dispara hook
-            do_action('tei_mapping_deleted', $mapping_id);
-            
+            // Limpa cache relacionado
+            $mapping = self::get_mapping_by_id($mapping_id);
+            if ($mapping) {
+                $cache_key = 'tei_mapping_' . $mapping['collection_id'] . '_' . $mapping['mapping_type'];
+                wp_cache_delete($cache_key, 'tei_mappings');
+            }
             return true;
         }
         
@@ -318,18 +379,18 @@ public static function get_mapping($collection_id, $mapping_type = null) {
     }
     
     /**
-     * Aplica filtros configurados aos parâmetros da API
+     * Aplica filtros aos parâmetros da API
      * 
-     * @param array $api_params Parâmetros existentes
+     * @param array $api_params Parâmetros da API
      * @param array $filter_rules Regras de filtro
-     * @return array Parâmetros modificados
+     * @return array
      */
-    public static function apply_filter_rules($api_params, $filter_rules) {
+    public static function apply_filters($api_params, $filter_rules) {
         if (empty($filter_rules) || !is_array($filter_rules)) {
             return $api_params;
         }
         
-        $metaquery = isset($api_params['metaquery']) ? $api_params['metaquery'] : [];
+        $metaquery = [];
         
         foreach ($filter_rules as $rule) {
             if (!empty($rule['metadatum']) && !empty($rule['value'])) {
@@ -352,10 +413,10 @@ public static function get_mapping($collection_id, $mapping_type = null) {
             if (count($metaquery) > 1) {
                 $api_params['metaquery'] = [
                     'relation' => 'AND',
-                    $metaquery
+                    'queries' => $metaquery
                 ];
             } else {
-                $api_params['metaquery'] = $metaquery;
+                $api_params['metaquery'] = $metaquery[0];
             }
         }
         
@@ -370,8 +431,20 @@ public static function get_mapping($collection_id, $mapping_type = null) {
      * @return bool|WP_Error
      */
     public static function validate_mapping($mapping_data, $type) {
-        // Validação básica removida temporariamente para debug
-        // Permite salvar qualquer mapeamento para testar
+        // Campos obrigatórios por tipo
+        $required_fields = self::get_required_fields($type);
+        
+        if (!empty($required_fields)) {
+            foreach ($required_fields as $field) {
+                if (empty($mapping_data[$field])) {
+                    return new WP_Error(
+                        'missing_field',
+                        sprintf(__('Campo obrigatório ausente: %s', 'tainacan-explorador'), $field)
+                    );
+                }
+            }
+        }
+        
         return true;
     }
     
@@ -383,9 +456,9 @@ public static function get_mapping($collection_id, $mapping_type = null) {
      */
     private static function get_required_fields($type) {
         $fields = [
-            'map' => [],  // Nenhum campo obrigatório por enquanto
-            'timeline' => [],
-            'story' => []
+            'map' => ['location'], // Apenas localização é obrigatória para mapa
+            'timeline' => ['date'], // Apenas data é obrigatória para timeline
+            'story' => [] // Nenhum campo obrigatório para story
         ];
         
         return $fields[$type] ?? [];
@@ -399,11 +472,19 @@ public static function get_mapping($collection_id, $mapping_type = null) {
      */
     public static function export_mappings($collection_id = null) {
         $args = [];
+        
         if ($collection_id) {
             $args['collection_id'] = $collection_id;
         }
         
         $mappings = self::get_all_mappings($args);
+        
+        // Remove informações sensíveis
+        foreach ($mappings as &$mapping) {
+            unset($mapping['id']);
+            unset($mapping['created_by']);
+            unset($mapping['author']);
+        }
         
         return [
             'version' => TEI_VERSION,
@@ -416,18 +497,36 @@ public static function get_mapping($collection_id, $mapping_type = null) {
      * Importa mapeamentos
      * 
      * @param array $data Dados de importação
-     * @return bool|WP_Error
+     * @param bool $overwrite Sobrescrever existentes
+     * @return array Resultado da importação
      */
-    public static function import_mappings($data) {
-        if (empty($data['mappings']) || !is_array($data['mappings'])) {
-            return new WP_Error('invalid_import', __('Dados de importação inválidos', 'tainacan-explorador'));
+    public static function import_mappings($data, $overwrite = false) {
+        if (!isset($data['mappings']) || !is_array($data['mappings'])) {
+            return [
+                'success' => false,
+                'message' => __('Dados de importação inválidos', 'tainacan-explorador')
+            ];
         }
         
         $imported = 0;
+        $skipped = 0;
         $errors = [];
         
         foreach ($data['mappings'] as $mapping) {
+            // Verifica se já existe
+            $existing = self::get_mapping(
+                $mapping['collection_id'],
+                $mapping['mapping_type']
+            );
+            
+            if ($existing && !$overwrite) {
+                $skipped++;
+                continue;
+            }
+            
+            // Salva mapeamento
             $result = self::save_mapping($mapping);
+            
             if (is_wp_error($result)) {
                 $errors[] = $result->get_error_message();
             } else {
@@ -435,44 +534,11 @@ public static function get_mapping($collection_id, $mapping_type = null) {
             }
         }
         
-        if (!empty($errors)) {
-            return new WP_Error('import_errors', implode(', ', $errors));
-        }
-        
-        return $imported;
-    }
-    
-    /**
-     * Clona um mapeamento para outra coleção
-     * 
-     * @param int $mapping_id ID do mapeamento original
-     * @param int $target_collection_id ID da coleção destino
-     * @return int|false
-     */
-    public static function clone_mapping($mapping_id, $target_collection_id) {
-        global $wpdb;
-        
-        $table_name = $wpdb->prefix . self::$table_name;
-        
-        // Obtém mapeamento original
-        $original = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM $table_name WHERE id = %d",
-            $mapping_id
-        ), ARRAY_A);
-        
-        if (!$original) {
-            return false;
-        }
-        
-        // Prepara dados para clonagem
-        unset($original['id']);
-        $original['collection_id'] = $target_collection_id;
-        $original['created_at'] = current_time('mysql');
-        $original['updated_at'] = current_time('mysql');
-        $original['created_by'] = get_current_user_id();
-        
-        // Salva clone
-        return self::save_mapping($original);
+        return [
+            'success' => true,
+            'imported' => $imported,
+            'skipped' => $skipped,
+            'errors' => $errors
+        ];
     }
 }
-
