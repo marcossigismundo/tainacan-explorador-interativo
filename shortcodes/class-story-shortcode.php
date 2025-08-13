@@ -32,24 +32,26 @@ class TEI_Story_Shortcode {
             'id' => 'tei-story-' . uniqid()
         ]);
         
-        // Validação da coleção
-        if (empty($atts['collection'])) {
-            return $this->render_error(__('ID da coleção não especificado.', 'tainacan-explorador'));
-        }
-        
-        // Obtém mapeamento
-        $mapping = TEI_Metadata_Mapper::get_mapping($atts['collection'], 'story');
-        
-        if (!$mapping) {
-            return $this->render_error(__('Mapeamento de storytelling não configurado para esta coleção.', 'tainacan-explorador'));
-        }
-        
-        // Obtém dados da coleção
-        $story_data = $this->get_story_data($atts['collection'], $mapping, $atts);
-        
-        if (is_wp_error($story_data)) {
-            return $this->render_error($story_data->get_error_message());
-        }
+// Validação da coleção
+if (empty($atts['collection']) || !is_numeric($atts['collection'])) {
+    return $this->render_error(__('ID da coleção não especificado ou inválido.', 'tainacan-explorador'));
+}
+
+$collection_id = intval($atts['collection']);
+
+// Obtém mapeamento
+$mapping = TEI_Metadata_Mapper::get_mapping($collection_id, 'story');
+
+if (!$mapping) {
+    return $this->render_error(__('Mapeamento de storytelling não configurado para esta coleção.', 'tainacan-explorador'));
+}
+
+// Obtém dados da coleção
+$story_data = $this->get_story_data($collection_id, $mapping, $atts);
+
+if (is_wp_error($story_data)) {
+    return $this->render_error($story_data->get_error_message());
+}
         
         // Gera configurações do storytelling
         $story_config = $this->get_story_config($atts, $mapping);
