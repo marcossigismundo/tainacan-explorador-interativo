@@ -23,7 +23,7 @@ class TEI_Story_Shortcode {
             'animation' => 'fade',
             'navigation' => 'dots',
             'autoplay' => false,
-            'autoplay_speed' => 17000,
+            'autoplay_speed' => 7000,
             'transition_speed' => 800,
             'parallax' => false,
             'fullscreen' => true,
@@ -680,13 +680,15 @@ class TEI_Story_Shortcode {
             <?php if ($config['autoplay']): ?>
             setInterval(function() {
                 if (currentIndex < totalChapters - 1) {
-                    storyWrapper.find('.swiper-button-next').click();
+                    chapters.eq(currentIndex).fadeOut(transitionSpeed).removeClass('active');
+                    currentIndex++;
+                    chapters.eq(currentIndex).fadeIn(transitionSpeed).addClass('active');
                 } else {
-                    chapters.eq(currentIndex).fadeOut(300).removeClass('active');
+                    chapters.eq(currentIndex).fadeOut(transitionSpeed).removeClass('active');
                     currentIndex = 0;
-                    chapters.eq(currentIndex).fadeIn(300).addClass('active');
-                    updatePagination();
+                    chapters.eq(currentIndex).fadeIn(transitionSpeed).addClass('active');
                 }
+                updatePagination();
             }, <?php echo intval($config['autoplay_speed']); ?>);
             <?php endif; ?>
         });
