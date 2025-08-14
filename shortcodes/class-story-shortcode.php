@@ -122,14 +122,30 @@ class TEI_Story_Shortcode {
         $items = $response['items'] ?? $response;
         
         foreach ($items as $index => $item) {
+            // CORREÇÃO: Garantir que os valores sejam strings antes de usar esc_url
+            $image_url = $this->get_image_url($item, $image_field);
+            $background_url = $this->get_field_value($item, $background_field, '');
+            $link_url = $this->get_field_value($item, $link_field, $item['url'] ?? '');
+            
+            // Converter arrays em strings se necessário
+            if (is_array($image_url)) {
+                $image_url = !empty($image_url) ? reset($image_url) : '';
+            }
+            if (is_array($background_url)) {
+                $background_url = !empty($background_url) ? reset($background_url) : '';
+            }
+            if (is_array($link_url)) {
+                $link_url = !empty($link_url) ? reset($link_url) : '';
+            }
+            
             $chapter = [
                 'id' => 'chapter-' . ($item['id'] ?? $index),
                 'title' => esc_html($this->get_field_value($item, $title_field, $item['title'] ?? '')),
                 'subtitle' => esc_html($this->get_field_value($item, $subtitle_field, '')),
                 'description' => wp_kses_post($this->get_field_value($item, $description_field, $item['description'] ?? '')),
-                'image' => esc_url($this->get_image_url($item, $image_field)),
-                'background' => esc_url($this->get_field_value($item, $background_field, '')),
-                'link' => esc_url($this->get_field_value($item, $link_field, $item['url'] ?? '')),
+                'image' => esc_url((string) $image_url),
+                'background' => esc_url((string) $background_url),
+                'link' => esc_url((string) $link_url),
                 'order' => intval($this->get_field_value($item, $order_field, $index))
             ];
             
@@ -164,8 +180,17 @@ class TEI_Story_Shortcode {
                 $value = $metadata;
             }
             
-            if (is_array($value) && !empty($value)) {
-                return reset($value);
+            // CORREÇÃO: Sempre retornar string quando for array
+            if (is_array($value)) {
+                if (!empty($value)) {
+                    // Se for array associativo com chaves específicas
+                    if (isset($value['url'])) {
+                        return $value['url'];
+                    }
+                    // Se for array simples, pega o primeiro valor
+                    return (string) reset($value);
+                }
+                return $default;
             }
             
             return $value;
@@ -173,7 +198,17 @@ class TEI_Story_Shortcode {
         
         // Verifica campos padrão
         if (isset($item[$field_id])) {
-            return $item[$field_id];
+            $value = $item[$field_id];
+            if (is_array($value)) {
+                if (!empty($value)) {
+                    if (isset($value['url'])) {
+                        return $value['url'];
+                    }
+                    return (string) reset($value);
+                }
+                return $default;
+            }
+            return $value;
         }
         
         // Campos especiais
@@ -194,6 +229,24 @@ class TEI_Story_Shortcode {
         if (!empty($image_field)) {
             $image_value = $this->get_field_value($item, $image_field);
             
+            // CORREÇÃO: Garantir que seja string
+            if (is_array($image_value)) {
+                if (!empty($image_value)) {
+                    // Se for array com estrutura de imagem do WordPress
+                    if (isset($image_value['url'])) {
+                        $image_value = $image_value['url'];
+                    } elseif (isset($image_value['large'])) {
+                        $image_value = $image_value['large'];
+                    } elseif (isset($image_value['full'])) {
+                        $image_value = $image_value['full'];
+                    } else {
+                        $image_value = reset($image_value);
+                    }
+                } else {
+                    $image_value = '';
+                }
+            }
+            
             if (!empty($image_value)) {
                 if (is_numeric($image_value)) {
                     $image_url = wp_get_attachment_image_url($image_value, 'large');
@@ -209,9 +262,18 @@ class TEI_Story_Shortcode {
         // Fallback para thumbnail
         if (isset($item['thumbnail'])) {
             if (is_array($item['thumbnail'])) {
-                return $item['thumbnail']['large'] ?? $item['thumbnail']['full'] ?? '';
+                if (isset($item['thumbnail']['large'])) {
+                    return $item['thumbnail']['large'];
+                } elseif (isset($item['thumbnail']['full'])) {
+                    return $item['thumbnail']['full'];
+                } elseif (isset($item['thumbnail']['url'])) {
+                    return $item['thumbnail']['url'];
+                } elseif (!empty($item['thumbnail'])) {
+                    return (string) reset($item['thumbnail']);
+                }
+            } else {
+                return $item['thumbnail'];
             }
-            return $item['thumbnail'];
         }
         
         return '';
