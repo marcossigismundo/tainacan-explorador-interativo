@@ -302,6 +302,10 @@ class TEI_Story_Shortcode {
      * Renderiza o storytelling
      */
     private function render_story($story_id, $story_data, $config, $atts) {
+        // Enqueue scripts e styles necessários
+        wp_enqueue_style('tei-story', TEI_PLUGIN_URL . 'assets/css/story.css', [], TEI_VERSION);
+        wp_enqueue_script('tei-story', TEI_PLUGIN_URL . 'assets/js/story.js', ['jquery'], TEI_VERSION, true);
+        
         ob_start();
         ?>
         <div class="tei-story-wrapper <?php echo esc_attr($atts['class']); ?>" 
@@ -320,160 +324,76 @@ class TEI_Story_Shortcode {
             </div>
             <?php endif; ?>
             
-            <div class="tei-story-container">
-                <?php foreach ($story_data['chapters'] as $index => $chapter): ?>
-                <section class="tei-story-chapter" 
-                         id="<?php echo esc_attr($chapter['id']); ?>"
-                         data-index="<?php echo esc_attr($index); ?>">
-                    
-                    <?php if (!empty($chapter['background'])): ?>
-                    <div class="tei-chapter-background" 
-                         style="background-image: url('<?php echo esc_url($chapter['background']); ?>');">
-                    </div>
-                    <?php endif; ?>
-                    
-                    <div class="tei-chapter-content">
-                        <?php if (!empty($chapter['image'])): ?>
-                        <div class="tei-chapter-media">
-                            <img src="<?php echo esc_url($chapter['image']); ?>" 
-                                 alt="<?php echo esc_attr($chapter['title']); ?>">
-                        </div>
-                        <?php endif; ?>
-                        
-                        <div class="tei-chapter-text">
-                            <?php if (!empty($chapter['title'])): ?>
-                            <h3 class="tei-chapter-title"><?php echo esc_html($chapter['title']); ?></h3>
-                            <?php endif; ?>
-                            
-                            <?php if (!empty($chapter['subtitle'])): ?>
-                            <h4 class="tei-chapter-subtitle"><?php echo esc_html($chapter['subtitle']); ?></h4>
-                            <?php endif; ?>
-                            
-                            <?php if (!empty($chapter['description'])): ?>
-                            <div class="tei-chapter-description">
-                                <?php echo wp_kses_post($chapter['description']); ?>
-                            </div>
-                            <?php endif; ?>
-                            
-                            <?php if (!empty($chapter['link'])): ?>
-                            <div class="tei-chapter-link">
-                                <a href="<?php echo esc_url($chapter['link']); ?>" 
-                                   target="_blank" 
-                                   class="tei-chapter-button">
-                                    <?php _e('Ver mais detalhes', 'tainacan-explorador'); ?>
-                                </a>
-                            </div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                </section>
-                <?php endforeach; ?>
-            </div>
-            
-            <?php if ($config['navigation'] !== 'none'): ?>
-            <div class="tei-story-navigation">
-                <?php if ($config['navigation'] === 'dots'): ?>
-                <div class="tei-story-dots">
+            <div class="tei-story-container swiper-container">
+                <div class="swiper-wrapper">
                     <?php foreach ($story_data['chapters'] as $index => $chapter): ?>
-                    <button class="tei-story-dot <?php echo $index === 0 ? 'active' : ''; ?>" 
-                            data-index="<?php echo esc_attr($index); ?>"
-                            aria-label="<?php echo esc_attr(sprintf(__('Ir para capítulo %d', 'tainacan-explorador'), $index + 1)); ?>">
-                    </button>
+                    <section class="tei-story-chapter swiper-slide" 
+                             id="<?php echo esc_attr($chapter['id']); ?>"
+                             data-index="<?php echo esc_attr($index); ?>"
+                             <?php if (!empty($chapter['background'])): ?>
+                             style="background-image: url('<?php echo esc_url($chapter['background']); ?>');"
+                             <?php endif; ?>>
+                        
+                        <div class="tei-chapter-overlay"></div>
+                        
+                        <div class="tei-chapter-content">
+                            <div class="tei-chapter-inner">
+                                <?php if (!empty($chapter['image'])): ?>
+                                <div class="tei-chapter-media">
+                                    <img src="<?php echo esc_url($chapter['image']); ?>" 
+                                         alt="<?php echo esc_attr($chapter['title']); ?>"
+                                         loading="lazy">
+                                </div>
+                                <?php endif; ?>
+                                
+                                <div class="tei-chapter-text">
+                                    <?php if (!empty($chapter['title'])): ?>
+                                    <h3 class="tei-chapter-title"><?php echo esc_html($chapter['title']); ?></h3>
+                                    <?php endif; ?>
+                                    
+                                    <?php if (!empty($chapter['subtitle'])): ?>
+                                    <h4 class="tei-chapter-subtitle"><?php echo esc_html($chapter['subtitle']); ?></h4>
+                                    <?php endif; ?>
+                                    
+                                    <?php if (!empty($chapter['description'])): ?>
+                                    <div class="tei-chapter-description">
+                                        <?php echo wp_kses_post($chapter['description']); ?>
+                                    </div>
+                                    <?php endif; ?>
+                                    
+                                    <?php if (!empty($chapter['link'])): ?>
+                                    <div class="tei-chapter-link">
+                                        <a href="<?php echo esc_url($chapter['link']); ?>" 
+                                           target="_blank" 
+                                           rel="noopener noreferrer"
+                                           class="tei-chapter-button">
+                                            <?php _e('Ver mais detalhes', 'tainacan-explorador'); ?>
+                                        </a>
+                                    </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
                     <?php endforeach; ?>
                 </div>
-                <?php endif; ?>
                 
                 <?php if ($config['navigation'] === 'arrows' || $config['navigation'] === 'both'): ?>
-                <button class="tei-story-prev" aria-label="<?php esc_attr_e('Capítulo anterior', 'tainacan-explorador'); ?>">
-                    <span class="dashicons dashicons-arrow-left-alt2"></span>
-                </button>
-                <button class="tei-story-next" aria-label="<?php esc_attr_e('Próximo capítulo', 'tainacan-explorador'); ?>">
-                    <span class="dashicons dashicons-arrow-right-alt2"></span>
-                </button>
+                <div class="swiper-button-prev"></div>
+                <div class="swiper-button-next"></div>
+                <?php endif; ?>
+                
+                <?php if ($config['navigation'] === 'dots' || $config['navigation'] === 'both'): ?>
+                <div class="swiper-pagination"></div>
                 <?php endif; ?>
             </div>
+            
+            <?php if ($config['fullscreen']): ?>
+            <button class="tei-story-fullscreen" aria-label="<?php esc_attr_e('Tela cheia', 'tainacan-explorador'); ?>">
+                <span class="dashicons dashicons-fullscreen-alt"></span>
+            </button>
             <?php endif; ?>
         </div>
-        
-        <style>
-        .tei-story-wrapper {
-            position: relative;
-            width: 100%;
-        }
-        
-        .tei-story-chapter {
-            min-height: 100vh;
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 60px 20px;
-        }
-        
-        .tei-chapter-background {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-size: cover;
-            background-position: center;
-            opacity: 0.3;
-            z-index: -1;
-        }
-        
-        .tei-chapter-content {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 40px;
-            align-items: center;
-        }
-        
-        .tei-chapter-media img {
-            width: 100%;
-            height: auto;
-            border-radius: 8px;
-        }
-        
-        .tei-chapter-title {
-            font-size: 2.5em;
-            margin-bottom: 20px;
-        }
-        
-        .tei-chapter-subtitle {
-            font-size: 1.5em;
-            color: #666;
-            margin-bottom: 20px;
-        }
-        
-        .tei-chapter-description {
-            font-size: 1.1em;
-            line-height: 1.6;
-            margin-bottom: 30px;
-        }
-        
-        .tei-chapter-button {
-            display: inline-block;
-            padding: 12px 30px;
-            background: #0073aa;
-            color: white;
-            text-decoration: none;
-            border-radius: 4px;
-            transition: background 0.3s;
-        }
-        
-        .tei-chapter-button:hover {
-            background: #005177;
-        }
-        
-        @media (max-width: 768px) {
-            .tei-chapter-content {
-                grid-template-columns: 1fr;
-            }
-        }
-        </style>
         <?php
         return ob_get_clean();
     }
