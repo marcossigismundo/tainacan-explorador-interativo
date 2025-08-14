@@ -23,7 +23,7 @@ class TEI_Story_Shortcode {
             'animation' => 'fade',
             'navigation' => 'dots',
             'autoplay' => false,
-            'autoplay_speed' => 7000,
+            'autoplay_speed' => 17000,
             'transition_speed' => 800,
             'parallax' => false,
             'fullscreen' => true,
