@@ -19,7 +19,7 @@ class TEI_Timeline_Shortcode {
         // Parse dos atributos
         $atts = TEI_Sanitizer::sanitize_shortcode_atts($atts, [
             'collection' => '',
-            'height' => '650px',
+            'height' => '750px',
             'width' => '100%', // Padrão mudado para 100% - largura total
             'start_date' => '',
             'end_date' => '',
@@ -475,7 +475,7 @@ class TEI_Timeline_Shortcode {
         }
         
         #<?php echo esc_attr($timeline_id); ?> { 
-            min-height: 500px; 
+            min-height: 600px; 
         }
         
         /* Remove fundo azul padrão do TimelineJS */
