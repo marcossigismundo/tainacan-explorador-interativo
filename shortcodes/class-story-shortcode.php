@@ -644,6 +644,39 @@ class TEI_Story_Shortcode {
 #<?php echo esc_attr($timeline_id); ?> .tl-slidenav-icon::before {
     color: #3b82f6 !important;
 }
+
+            /* Força cor do texto dos botões de navegação */
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-next .tl-slidenav-content-container,
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-previous .tl-slidenav-content-container {
+    color: #1f2937 !important;
+    opacity: 1 !important;
+}
+
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-next .tl-slidenav-title,
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-previous .tl-slidenav-title {
+    color: #1f2937 !important;
+    font-weight: 600 !important;
+}
+
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-next .tl-slidenav-description,
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-previous .tl-slidenav-description {
+    color: #4b5563 !important;
+    opacity: 1 !important;
+}
+
+/* Estado hover */
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-next:hover .tl-slidenav-content-container,
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-previous:hover .tl-slidenav-content-container {
+    color: #111827 !important;
+    background: rgba(255, 255, 255, 0.95) !important;
+}
+
+/* Remove transparência dos botões */
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-next,
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-previous {
+    opacity: 1 !important;
+    background: rgba(255, 255, 255, 0.9) !important;
+}
         </style>
         
         <script>
