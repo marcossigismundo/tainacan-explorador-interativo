@@ -302,10 +302,6 @@ class TEI_Story_Shortcode {
      * Renderiza o storytelling
      */
     private function render_story($story_id, $story_data, $config, $atts) {
-        // Enqueue scripts e styles necessários
-        wp_enqueue_style('tei-story', TEI_PLUGIN_URL . 'assets/css/story.css', [], TEI_VERSION);
-        wp_enqueue_script('tei-story', TEI_PLUGIN_URL . 'assets/js/story.js', ['jquery'], TEI_VERSION, true);
-        
         ob_start();
         ?>
         <div class="tei-story-wrapper <?php echo esc_attr($atts['class']); ?>" 
@@ -394,6 +390,268 @@ class TEI_Story_Shortcode {
             </button>
             <?php endif; ?>
         </div>
+        
+        <style>
+        /* Story Wrapper */
+        .tei-story-wrapper {
+            position: relative;
+            width: 100%;
+        }
+        
+        /* Story Header */
+        .tei-story-header {
+            padding: 60px 20px;
+            text-align: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 0;
+        }
+        
+        .tei-story-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 0 0 16px;
+            color: white;
+        }
+        
+        .tei-story-intro {
+            font-size: 1.125rem;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            opacity: 0.95;
+        }
+        
+        /* Story Container */
+        .tei-story-container {
+            position: relative;
+            width: 100%;
+            background: #f9fafb;
+        }
+        
+        /* Story Chapter */
+        .tei-story-chapter {
+            position: relative;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        
+        /* Chapter Overlay */
+        .tei-chapter-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 1;
+        }
+        
+        /* Chapter Content */
+        .tei-chapter-content {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .tei-chapter-inner {
+            background: white;
+            border-radius: 16px;
+            padding: 48px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            align-items: center;
+        }
+        
+        /* Chapter Media */
+        .tei-chapter-media {
+            overflow: hidden;
+            border-radius: 12px;
+        }
+        
+        .tei-chapter-media img {
+            width: 100%;
+            height: auto;
+            display: block;
+            object-fit: cover;
+        }
+        
+        /* Chapter Text */
+        .tei-chapter-text {
+            padding: 20px;
+        }
+        
+        .tei-chapter-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #111827;
+            margin: 0 0 12px;
+            line-height: 1.2;
+        }
+        
+        .tei-chapter-subtitle {
+            font-size: 1.125rem;
+            color: #6b7280;
+            margin: 0 0 24px;
+            font-style: italic;
+        }
+        
+        .tei-chapter-description {
+            font-size: 1rem;
+            line-height: 1.75;
+            color: #374151;
+            margin-bottom: 24px;
+        }
+        
+        .tei-chapter-description p {
+            margin: 0 0 16px;
+        }
+        
+        .tei-chapter-description p:last-child {
+            margin-bottom: 0;
+        }
+        
+        /* Chapter Button */
+        .tei-chapter-button {
+            display: inline-block;
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .tei-chapter-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+            color: white;
+        }
+        
+        /* Navigation */
+        .swiper-button-prev,
+        .swiper-button-next {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 48px;
+            height: 48px;
+            background: white;
+            border-radius: 50%;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 10;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #374151;
+        }
+        
+        .swiper-button-prev {
+            left: 20px;
+        }
+        
+        .swiper-button-next {
+            right: 20px;
+        }
+        
+        .swiper-button-prev::after,
+        .swiper-button-next::after {
+            font-size: 20px;
+            font-weight: bold;
+        }
+        
+        .swiper-pagination {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .swiper-pagination-bullet {
+            width: 12px;
+            height: 12px;
+            background: rgba(255, 255, 255, 0.5);
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .swiper-pagination-bullet-active {
+            background: white;
+            transform: scale(1.2);
+        }
+        
+        /* Fullscreen Button */
+        .tei-story-fullscreen {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            background: white;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            color: #374151;
+        }
+        
+        .tei-story-fullscreen:hover {
+            background: #f3f4f6;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .tei-story-title {
+                font-size: 1.875rem;
+            }
+            
+            .tei-story-intro {
+                font-size: 1rem;
+            }
+            
+            .tei-chapter-inner {
+                grid-template-columns: 1fr;
+                padding: 24px;
+            }
+            
+            .tei-chapter-title {
+                font-size: 1.5rem;
+            }
+            
+            .tei-chapter-text {
+                padding: 10px;
+            }
+            
+            .swiper-button-prev,
+            .swiper-button-next {
+                width: 40px;
+                height: 40px;
+            }
+        }
+        </style>
         <?php
         return ob_get_clean();
     }
