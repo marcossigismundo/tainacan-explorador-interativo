@@ -25,7 +25,7 @@ class TEI_API_Handler {
     }
     
     /**
-     * Obtém coleções
+     * Obtém coleções com contagem real de itens
      * 
      * @return array|WP_Error
      */
@@ -50,21 +50,54 @@ class TEI_API_Handler {
             return new WP_Error('invalid_response', __('Resposta inválida da API', 'tainacan-explorador'));
         }
         
-        // Formata coleções
+        // Formata coleções COM CONTAGEM REAL
         $collections = [];
         foreach ($data as $collection) {
             if (isset($collection['id']) && isset($collection['name'])) {
+                // BUSCA CONTAGEM REAL DE ITENS
+                $items_count = $this->get_collection_items_count($collection['id']);
+                
                 $collections[] = [
                     'id' => $collection['id'],
                     'name' => $collection['name'],
                     'description' => $collection['description'] ?? '',
-                    'items_count' => $collection['total_items'] ?? 0,
+                    'items_count' => $items_count, // Contagem real
                     'thumbnail' => $collection['thumbnail'] ?? ''
                 ];
             }
         }
         
         return $collections;
+    }
+    
+    /**
+     * Obtém contagem de itens de uma coleção
+     * 
+     * @param int $collection_id
+     * @return int
+     */
+    private function get_collection_items_count($collection_id) {
+        $url = $this->api_base . 'collection/' . $collection_id . '/items?perpage=1';
+        
+        $response = wp_remote_get($url, [
+            'timeout' => 10,
+            'headers' => [
+                'Accept' => 'application/json'
+            ]
+        ]);
+        
+        if (is_wp_error($response)) {
+            return 0;
+        }
+        
+        // O total vem no header X-WP-Total
+        $headers = wp_remote_retrieve_headers($response);
+        
+        if (isset($headers['x-wp-total'])) {
+            return intval($headers['x-wp-total']);
+        }
+        
+        return 0;
     }
     
     /**
@@ -141,14 +174,6 @@ class TEI_API_Handler {
         
         $params = wp_parse_args($params, $defaults);
         
-        // Adiciona fetch_only_meta se especificado
-        if (!empty($params['fetch_only_meta'])) {
-            // Garante que são strings
-            if (is_array($params['fetch_only_meta'])) {
-                $params['fetch_only_meta'] = implode(',', $params['fetch_only_meta']);
-            }
-        }
-        
         $url = $this->api_base . 'collection/' . $collection_id . '/items?' . http_build_query($params);
         
         error_log('TEI Debug - Fetching items from: ' . $url);
@@ -172,11 +197,7 @@ class TEI_API_Handler {
         }
         
         // Se for resposta paginada
-        if (isset($data['items'])) {
-            $items = $data['items'];
-        } else {
-            $items = $data;
-        }
+        $items = isset($data['items']) ? $data['items'] : $data;
         
         error_log('TEI Debug - Items found: ' . count($items));
         
@@ -186,11 +207,15 @@ class TEI_API_Handler {
             $normalized[] = $this->normalize_item($item);
         }
         
+        // Obtém total do header
+        $headers = wp_remote_retrieve_headers($response);
+        $total = isset($headers['x-wp-total']) ? intval($headers['x-wp-total']) : count($normalized);
+        
         // Estrutura de resposta
         $result = [
             'items' => $normalized,
-            'total' => isset($data['total']) ? $data['total'] : count($normalized),
-            'pages' => isset($data['pages']) ? $data['pages'] : 1,
+            'total' => $total,
+            'pages' => isset($data['pages']) ? $data['pages'] : ceil($total / $params['perpage']),
             'page' => $params['paged']
         ];
         
@@ -211,14 +236,6 @@ class TEI_API_Handler {
             return [];
         }
         
-        // Debug - mostra estrutura
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('TEI Debug - Item keys: ' . json_encode(array_keys($item)));
-            if (isset($item['metadata'])) {
-                error_log('TEI Debug - Metadata structure: ' . json_encode($item['metadata']));
-            }
-        }
-        
         $normalized = [
             'id' => $item['id'] ?? '',
             'title' => $item['title'] ?? '',
@@ -231,12 +248,9 @@ class TEI_API_Handler {
             'metadata' => []
         ];
         
-        // CORREÇÃO: Processa metadados no formato correto do Tainacan v2
-        // O Tainacan retorna metadados como objeto onde cada chave é o ID do metadado
-        if (isset($item['metadata']) && !empty($item['metadata'])) {
-            // Se metadata for objeto/array associativo
+        // Processa metadados
+        if (isset($item['metadata']) && is_array($item['metadata'])) {
             foreach ($item['metadata'] as $meta_id => $meta_data) {
-                // Cada metadado tem a estrutura: {id, name, value, value_as_html, value_as_string}
                 if (is_array($meta_data)) {
                     $normalized['metadata'][$meta_id] = [
                         'id' => $meta_data['id'] ?? $meta_id,
@@ -245,27 +259,7 @@ class TEI_API_Handler {
                         'value_as_html' => $meta_data['value_as_html'] ?? '',
                         'value_as_string' => $meta_data['value_as_string'] ?? ''
                     ];
-                    
-                    // Debug específico
-                    if (defined('WP_DEBUG') && WP_DEBUG) {
-                        error_log("TEI Debug - Metadata $meta_id: " . json_encode($normalized['metadata'][$meta_id]));
-                    }
                 }
-            }
-        }
-        
-        // Fallback: Tenta detectar metadados em outras chaves do item
-        // Alguns temas/configurações podem retornar metadados diretamente no item
-        foreach ($item as $key => $value) {
-            // Padrão: chaves numéricas ou que começam com números são IDs de metadados
-            if (is_numeric($key) && !isset($normalized['metadata'][$key])) {
-                $normalized['metadata'][$key] = [
-                    'id' => $key,
-                    'name' => '',
-                    'value' => $value,
-                    'value_as_html' => is_string($value) ? $value : '',
-                    'value_as_string' => is_string($value) ? $value : json_encode($value)
-                ];
             }
         }
         
@@ -283,7 +277,6 @@ class TEI_API_Handler {
     private function extract_thumbnail($item) {
         $thumbnail = [];
         
-        // Tenta diferentes formatos
         if (isset($item['thumbnail']) && is_array($item['thumbnail'])) {
             $thumbnail = $item['thumbnail'];
         } elseif (isset($item['_thumbnail_id'])) {
