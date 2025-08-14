@@ -326,7 +326,9 @@ class TEI_Story_Shortcode {
                     <section class="tei-story-chapter swiper-slide" 
                              id="<?php echo esc_attr($chapter['id']); ?>"
                              data-index="<?php echo esc_attr($index); ?>"
-                             <?php if (!empty($chapter['background'])): ?>
+                             <?php if (!empty($chapter['image'])): ?>
+                             style="background-image: url('<?php echo esc_url($chapter['image']); ?>');"
+                             <?php elseif (!empty($chapter['background'])): ?>
                              style="background-image: url('<?php echo esc_url($chapter['background']); ?>');"
                              <?php endif; ?>>
                         
@@ -334,14 +336,6 @@ class TEI_Story_Shortcode {
                         
                         <div class="tei-chapter-content">
                             <div class="tei-chapter-inner">
-                                <?php if (!empty($chapter['image'])): ?>
-                                <div class="tei-chapter-media">
-                                    <img src="<?php echo esc_url($chapter['image']); ?>" 
-                                         alt="<?php echo esc_attr($chapter['title']); ?>"
-                                         loading="lazy">
-                                </div>
-                                <?php endif; ?>
-                                
                                 <div class="tei-chapter-text">
                                     <?php if (!empty($chapter['title'])): ?>
                                     <h3 class="tei-chapter-title"><?php echo esc_html($chapter['title']); ?></h3>
@@ -383,12 +377,6 @@ class TEI_Story_Shortcode {
                 <div class="swiper-pagination"></div>
                 <?php endif; ?>
             </div>
-            
-            <?php if ($config['fullscreen']): ?>
-            <button class="tei-story-fullscreen" aria-label="<?php esc_attr_e('Tela cheia', 'tainacan-explorador'); ?>">
-                <span class="dashicons dashicons-fullscreen-alt"></span>
-            </button>
-            <?php endif; ?>
         </div>
         
         <style>
@@ -469,14 +457,12 @@ class TEI_Story_Shortcode {
         }
         
         .tei-chapter-inner {
-            background: white;
+            background: rgba(255, 255, 255, 0.95);
             border-radius: 16px;
             padding: 48px;
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 40px;
-            align-items: center;
+            max-width: 600px;
+            margin: 0 auto;
         }
         
         /* Chapter Media */
@@ -603,29 +589,6 @@ class TEI_Story_Shortcode {
             transform: scale(1.2);
         }
         
-        /* Fullscreen Button */
-        .tei-story-fullscreen {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 100;
-            width: 40px;
-            height: 40px;
-            border-radius: 8px;
-            background: white;
-            border: none;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            color: #374151;
-        }
-        
-        .tei-story-fullscreen:hover {
-            background: #f3f4f6;
-        }
-        
         /* Responsive */
         @media (max-width: 768px) {
             .tei-story-title {
@@ -711,17 +674,7 @@ class TEI_Story_Shortcode {
                 updatePagination();
             });
             
-            // Inicializa paginação
             createPagination();
-            
-            // Tela cheia
-            storyWrapper.on('click', '.tei-story-fullscreen', function() {
-                if (!document.fullscreenElement) {
-                    storyWrapper[0].requestFullscreen();
-                } else {
-                    document.exitFullscreen();
-                }
-            });
             
             // Autoplay se configurado
             <?php if ($config['autoplay']): ?>
