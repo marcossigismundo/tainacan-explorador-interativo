@@ -15,15 +15,28 @@ class TEI_Sanitizer {
     /**
      * Sanitiza atributos de shortcode
      * 
-     * @param array $atts Atributos do shortcode
+     * @param array|string $atts Atributos do shortcode
      * @param array $defaults Valores padrão
      * @return array
      */
     public static function sanitize_shortcode_atts($atts, $defaults) {
+        // CORREÇÃO: Garantir que $atts seja um array antes de processar
+        if (!is_array($atts)) {
+            $atts = [];
+        }
+        
+        // CORREÇÃO: Usar shortcode_atts primeiro para garantir estrutura correta
         $atts = shortcode_atts($defaults, $atts);
         
+        // CORREÇÃO: Sanitizar cada valor individualmente, verificando o tipo
         foreach ($atts as $key => $value) {
-            $atts[$key] = self::sanitize_by_key($key, $value);
+            // CORREÇÃO: Verificar se o valor não é um array antes de sanitizar
+            if (!is_array($value)) {
+                $atts[$key] = self::sanitize_by_key($key, $value);
+            } else {
+                // Se for array, converter para string ou usar valor padrão
+                $atts[$key] = isset($defaults[$key]) ? $defaults[$key] : '';
+            }
         }
         
         return $atts;
@@ -37,6 +50,14 @@ class TEI_Sanitizer {
      * @return mixed
      */
     private static function sanitize_by_key($key, $value) {
+        // CORREÇÃO: Garantir que o valor seja string antes de processar
+        if (is_array($value)) {
+            $value = '';
+        }
+        
+        // CORREÇÃO: Converter valor para string se necessário
+        $value = (string) $value;
+        
         switch ($key) {
             case 'collection':
             case 'collection_id':
@@ -74,6 +95,10 @@ class TEI_Sanitizer {
             case 'id':
                 return sanitize_html_class($value);
                 
+            case 'start_date':
+            case 'end_date':
+                return sanitize_text_field($value);
+                
             default:
                 return sanitize_text_field($value);
         }
@@ -86,6 +111,13 @@ class TEI_Sanitizer {
      * @return string
      */
     private static function sanitize_dimension($value) {
+        // CORREÇÃO: Garantir que seja string
+        $value = (string) $value;
+        
+        if (empty($value)) {
+            return '100%';
+        }
+        
         if (is_numeric($value)) {
             return $value . 'px';
         }
@@ -112,21 +144,26 @@ class TEI_Sanitizer {
      * @return mixed
      */
     public static function sanitize($value, $type = 'text', $options = []) {
+        // CORREÇÃO: Verificar tipo do valor antes de processar
+        if ($type !== 'array' && is_array($value)) {
+            $value = implode(',', $value);
+        }
+        
         switch ($type) {
             case 'text':
-                return sanitize_text_field($value);
+                return sanitize_text_field((string) $value);
                 
             case 'textarea':
-                return sanitize_textarea_field($value);
+                return sanitize_textarea_field((string) $value);
                 
             case 'html':
-                return wp_kses_post($value);
+                return wp_kses_post((string) $value);
                 
             case 'email':
-                return sanitize_email($value);
+                return sanitize_email((string) $value);
                 
             case 'url':
-                return esc_url_raw($value);
+                return esc_url_raw((string) $value);
                 
             case 'int':
             case 'integer':
@@ -150,16 +187,16 @@ class TEI_Sanitizer {
                 return self::sanitize_coordinates($value);
                 
             case 'color':
-                return self::sanitize_hex_color($value);
+                return self::sanitize_hex_color((string) $value);
                 
             case 'slug':
-                return sanitize_key($value);
+                return sanitize_key((string) $value);
                 
             case 'file':
-                return sanitize_file_name($value);
+                return sanitize_file_name((string) $value);
                 
             default:
-                return sanitize_text_field($value);
+                return sanitize_text_field((string) $value);
         }
     }
     
@@ -269,6 +306,7 @@ class TEI_Sanitizer {
      * @return string
      */
     private static function sanitize_hex_color($color) {
+        $color = (string) $color;
         if (preg_match('/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/', $color)) {
             return $color;
         }
