@@ -93,9 +93,6 @@ final class TainacanExploradorInterativo {
         // Internacionalização
         add_action('plugins_loaded', [$this, 'load_textdomain'], 10);
         
-        // Inicializa o plugin
-        add_action('plugins_loaded', [$this, 'init_plugin'], 15);
-        
         // Admin
         add_action('admin_menu', [$this, 'add_admin_menu']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
@@ -166,15 +163,6 @@ final class TainacanExploradorInterativo {
     }
     
     /**
-     * Inicializa o plugin
-     */
-    public function init_plugin() {
-        if (!$this->dependencies_checked || !$this->is_tainacan_active()) {
-            return;
-        }
-    }
-    
-    /**
      * Carrega textdomain
      */
     public function load_textdomain() {
@@ -200,7 +188,7 @@ final class TainacanExploradorInterativo {
     }
     
     /**
-     * Carrega assets administrativos
+     * Carrega assets administrativos - CORREÇÃO DO ERRO ltrim()
      */
     public function enqueue_admin_assets($hook) {
         if (strpos($hook, 'tainacan-explorador') === false) {
@@ -235,19 +223,21 @@ final class TainacanExploradorInterativo {
             true
         );
         
-        // Localização - CORREÇÃO: garantir que todos os valores sejam strings
+        // CORREÇÃO CRÍTICA: Garantir que todos os valores sejam strings
+        $translations = [
+            'loading' => __('Carregando...', 'tainacan-explorador'),
+            'error' => __('Erro ao carregar dados', 'tainacan-explorador'),
+            'saved' => __('Configurações salvas com sucesso!', 'tainacan-explorador'),
+            'confirm_delete' => __('Tem certeza que deseja excluir este mapeamento?', 'tainacan-explorador')
+        ];
+        
         wp_localize_script('tei-admin-react', 'teiAdmin', [
             'apiUrl' => (string) rest_url('tainacan-explorador/v1/'),
             'nonce' => (string) wp_create_nonce('wp_rest'),
             'ajaxUrl' => (string) admin_url('admin-ajax.php'),
             'ajaxNonce' => (string) wp_create_nonce('tei_admin'),
             'pluginUrl' => (string) TEI_PLUGIN_URL,
-            'translations' => [
-                'loading' => __('Carregando...', 'tainacan-explorador'),
-                'error' => __('Erro ao carregar dados', 'tainacan-explorador'),
-                'saved' => __('Configurações salvas com sucesso!', 'tainacan-explorador'),
-                'confirm_delete' => __('Tem certeza que deseja excluir este mapeamento?', 'tainacan-explorador')
-            ]
+            'translationsJson' => wp_json_encode($translations) // Passa como JSON string
         ]);
     }
     
@@ -297,7 +287,7 @@ final class TainacanExploradorInterativo {
      * Handle preview
      */
     public function handle_preview() {
-        if (!isset($_GET['tei-preview'])) {
+        if (!isset($_GET['tei-preview']) && !get_query_var('tei_preview')) {
             return;
         }
         
@@ -316,6 +306,8 @@ final class TainacanExploradorInterativo {
      * Renderiza preview
      */
     private function render_preview($type, $collection_id) {
+        // Força carregamento de assets
+        $this->conditionally_enqueue_assets(true, $type);
         ?>
         <!DOCTYPE html>
         <html <?php language_attributes(); ?>>
@@ -323,10 +315,7 @@ final class TainacanExploradorInterativo {
             <meta charset="<?php bloginfo('charset'); ?>">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <title><?php echo sprintf(__('Preview - %s', 'tainacan-explorador'), ucfirst($type)); ?></title>
-            <?php 
-            $this->conditionally_enqueue_assets(true, $type);
-            wp_head(); 
-            ?>
+            <?php wp_head(); ?>
             <style>
                 body { margin: 0; padding: 0; }
                 .preview-header { 
@@ -342,7 +331,7 @@ final class TainacanExploradorInterativo {
         <body>
             <div class="preview-header">
                 <button onclick="window.close()" style="float:right">✕ Fechar</button>
-                <h1><?php echo sprintf(__('Preview: %s', 'tainacan-explorador'), ucfirst($type)); ?></h1>
+                <h1><?php echo sprintf(__('Preview: %s - Coleção #%d', 'tainacan-explorador'), ucfirst($type), $collection_id); ?></h1>
             </div>
             <div class="preview-container">
                 <?php
@@ -414,7 +403,7 @@ final class TainacanExploradorInterativo {
             wp_enqueue_style('tei-common', TEI_PLUGIN_URL . 'assets/css/common.css', [], TEI_VERSION);
             wp_enqueue_script('tei-common', TEI_PLUGIN_URL . 'assets/js/common.js', ['jquery'], TEI_VERSION, true);
             
-            // CORREÇÃO: garantir que todos os valores sejam strings
+            // CORREÇÃO: garantir strings
             wp_localize_script('tei-common', 'teiConfig', [
                 'apiUrl' => (string) rest_url('tainacan-explorador/v1/'),
                 'nonce' => (string) wp_create_nonce('wp_rest'),
@@ -464,11 +453,6 @@ final class TainacanExploradorInterativo {
         $cache_dir = $upload_dir['basedir'] . '/tainacan-explorer-cache';
         if (!file_exists($cache_dir)) {
             wp_mkdir_p($cache_dir);
-            
-            $htaccess = $cache_dir . '/.htaccess';
-            if (!file_exists($htaccess)) {
-                file_put_contents($htaccess, 'Deny from all');
-            }
         }
         
         if (!wp_next_scheduled('tei_cache_cleanup')) {
