@@ -618,6 +618,32 @@ class TEI_Story_Shortcode {
                 height: 40px;
             }
         }
+
+            /* Customização das cores das setas de navegação */
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-next,
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-previous {
+    color: #3b82f6 !important; /* Azul */
+    background: white !important;
+    border: 2px solid #3b82f6 !important;
+    opacity: 1 !important;
+}
+
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-next:hover,
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-previous:hover {
+    color: white !important;
+    background: #3b82f6 !important;
+}
+
+/* Texto dos botões de navegação */
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-title,
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-description {
+    color: #1f2937 !important; /* Cinza escuro */
+}
+
+/* Ícones das setas */
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-icon::before {
+    color: #3b82f6 !important;
+}
         </style>
         
         <script>
