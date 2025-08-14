@@ -637,7 +637,7 @@ class TEI_Story_Shortcode {
 /* Texto dos botões de navegação */
 #<?php echo esc_attr($timeline_id); ?> .tl-slidenav-title,
 #<?php echo esc_attr($timeline_id); ?> .tl-slidenav-description {
-    color: #1f2937 !important; /* Cinza escuro */
+    color: #fff !important; /* Cinza escuro */
 }
 
 /* Ícones das setas */
