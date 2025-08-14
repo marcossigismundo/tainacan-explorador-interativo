@@ -669,64 +669,35 @@ class TEI_Timeline_Shortcode {
         #<?php echo esc_attr($timeline_id); ?> .tl-text-content-container {
             background: none !important;
         }
-
-            /* Customização das cores das setas de navegação */
+/* Botões com texto branco sempre visível */
 #<?php echo esc_attr($timeline_id); ?> .tl-slidenav-next,
 #<?php echo esc_attr($timeline_id); ?> .tl-slidenav-previous {
-    color: #3b82f6 !important; /* Azul */
-    background: white !important;
-    border: 2px solid #3b82f6 !important;
+    background: #3b82f6 !important;
     opacity: 1 !important;
 }
 
-#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-next:hover,
-#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-previous:hover {
-    color: white !important;
-    background: #3b82f6 !important;
-}
-
-/* Texto dos botões de navegação */
-#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-title,
-#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-description {
-    color: #fff !important; /* Cinza escuro */
-}
-
-/* Ícones das setas */
-#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-icon::before {
-    color: #3b82f6 !important;
-}
-
-            /* Força cor do texto dos botões de navegação */
 #<?php echo esc_attr($timeline_id); ?> .tl-slidenav-next .tl-slidenav-content-container,
 #<?php echo esc_attr($timeline_id); ?> .tl-slidenav-previous .tl-slidenav-content-container {
-    color: #1f2937 !important;
+    color: white !important;
     opacity: 1 !important;
 }
 
 #<?php echo esc_attr($timeline_id); ?> .tl-slidenav-next .tl-slidenav-title,
 #<?php echo esc_attr($timeline_id); ?> .tl-slidenav-previous .tl-slidenav-title {
-    color: #1f2937 !important;
+    color: white !important;
     font-weight: 600 !important;
 }
 
 #<?php echo esc_attr($timeline_id); ?> .tl-slidenav-next .tl-slidenav-description,
 #<?php echo esc_attr($timeline_id); ?> .tl-slidenav-previous .tl-slidenav-description {
-    color: #4b5563 !important;
+    color: rgba(255, 255, 255, 0.9) !important;
     opacity: 1 !important;
 }
 
-/* Estado hover */
-#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-next:hover .tl-slidenav-content-container,
-#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-previous:hover .tl-slidenav-content-container {
-    color: #111827 !important;
-    background: rgba(255, 255, 255, 0.95) !important;
-}
-
-/* Remove transparência dos botões */
-#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-next,
-#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-previous {
-    opacity: 1 !important;
-    background: rgba(255, 255, 255, 0.9) !important;
+/* Hover mais claro */
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-next:hover,
+#<?php echo esc_attr($timeline_id); ?> .tl-slidenav-previous:hover {
+    background: #2563eb !important;
 }
             
         </style>
