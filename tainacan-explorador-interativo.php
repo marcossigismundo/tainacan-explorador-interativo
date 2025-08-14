@@ -188,7 +188,8 @@ final class TainacanExploradorInterativo {
     }
     
     /**
-     * Carrega assets administrativos - CORREÇÃO DO ERRO ltrim()
+     * Carrega assets administrativos
+     * CORREÇÃO: Não usa wp_localize_script no admin
      */
     public function enqueue_admin_assets($hook) {
         if (strpos($hook, 'tainacan-explorador') === false) {
@@ -223,22 +224,22 @@ final class TainacanExploradorInterativo {
             true
         );
         
-        // CORREÇÃO CRÍTICA: Garantir que todos os valores sejam strings
-        $translations = [
-            'loading' => __('Carregando...', 'tainacan-explorador'),
-            'error' => __('Erro ao carregar dados', 'tainacan-explorador'),
-            'saved' => __('Configurações salvas com sucesso!', 'tainacan-explorador'),
-            'confirm_delete' => __('Tem certeza que deseja excluir este mapeamento?', 'tainacan-explorador')
-        ];
-        
-        wp_localize_script('tei-admin-react', 'teiAdmin', [
-            'apiUrl' => (string) rest_url('tainacan-explorador/v1/'),
-            'nonce' => (string) wp_create_nonce('wp_rest'),
-            'ajaxUrl' => (string) admin_url('admin-ajax.php'),
-            'ajaxNonce' => (string) wp_create_nonce('tei_admin'),
-            'pluginUrl' => (string) TEI_PLUGIN_URL,
-            'translationsJson' => wp_json_encode($translations) // Passa como JSON string
-        ]);
+        // CORREÇÃO: Injeta dados diretamente no JavaScript
+        wp_add_inline_script('tei-admin-react', '
+            window.teiAdmin = {
+                apiUrl: "' . esc_js(rest_url('tainacan-explorador/v1/')) . '",
+                nonce: "' . esc_js(wp_create_nonce('wp_rest')) . '",
+                ajaxUrl: "' . esc_js(admin_url('admin-ajax.php')) . '",
+                ajaxNonce: "' . esc_js(wp_create_nonce('tei_admin')) . '",
+                pluginUrl: "' . esc_js(TEI_PLUGIN_URL) . '",
+                translations: {
+                    loading: "' . esc_js(__('Carregando...', 'tainacan-explorador')) . '",
+                    error: "' . esc_js(__('Erro ao carregar dados', 'tainacan-explorador')) . '",
+                    saved: "' . esc_js(__('Configurações salvas com sucesso!', 'tainacan-explorador')) . '",
+                    confirm_delete: "' . esc_js(__('Tem certeza que deseja excluir este mapeamento?', 'tainacan-explorador')) . '"
+                }
+            };
+        ', 'before');
     }
     
     /**
@@ -381,9 +382,15 @@ final class TainacanExploradorInterativo {
     
     /**
      * Carrega assets condicionalmente
+     * CORREÇÃO: Não usa wp_localize_script no frontend durante save
      */
     public function conditionally_enqueue_assets($force = false, $type = null) {
         global $post;
+        
+        // CORREÇÃO: Não carrega scripts no admin ou durante save_post
+        if (is_admin() || (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE)) {
+            return;
+        }
         
         if ($force) {
             $has_map = ($type === 'map');
@@ -403,13 +410,15 @@ final class TainacanExploradorInterativo {
             wp_enqueue_style('tei-common', TEI_PLUGIN_URL . 'assets/css/common.css', [], TEI_VERSION);
             wp_enqueue_script('tei-common', TEI_PLUGIN_URL . 'assets/js/common.js', ['jquery'], TEI_VERSION, true);
             
-            // CORREÇÃO: garantir strings
-            wp_localize_script('tei-common', 'teiConfig', [
-                'apiUrl' => (string) rest_url('tainacan-explorador/v1/'),
-                'nonce' => (string) wp_create_nonce('wp_rest'),
-                'ajaxUrl' => (string) admin_url('admin-ajax.php'),
-                'pluginUrl' => (string) TEI_PLUGIN_URL
-            ]);
+            // CORREÇÃO: Injeta dados diretamente no JavaScript
+            wp_add_inline_script('tei-common', '
+                window.teiConfig = {
+                    apiUrl: "' . esc_js(rest_url('tainacan-explorador/v1/')) . '",
+                    nonce: "' . esc_js(wp_create_nonce('wp_rest')) . '",
+                    ajaxUrl: "' . esc_js(admin_url('admin-ajax.php')) . '",
+                    pluginUrl: "' . esc_js(TEI_PLUGIN_URL) . '"
+                };
+            ', 'before');
         }
         
         if ($has_map) {
@@ -453,6 +462,11 @@ final class TainacanExploradorInterativo {
         $cache_dir = $upload_dir['basedir'] . '/tainacan-explorer-cache';
         if (!file_exists($cache_dir)) {
             wp_mkdir_p($cache_dir);
+            
+            $htaccess = $cache_dir . '/.htaccess';
+            if (!file_exists($htaccess)) {
+                file_put_contents($htaccess, 'Deny from all');
+            }
         }
         
         if (!wp_next_scheduled('tei_cache_cleanup')) {
