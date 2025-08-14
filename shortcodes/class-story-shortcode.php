@@ -435,13 +435,17 @@ class TEI_Story_Shortcode {
         .tei-story-chapter {
             position: relative;
             min-height: 100vh;
-            display: flex;
+            display: none; /* Esconde por padrão */
             align-items: center;
             justify-content: center;
             padding: 60px 20px;
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
+        }
+        
+        .tei-story-chapter.active {
+            display: flex; /* Mostra apenas o ativo */
         }
         
         /* Chapter Overlay */
@@ -652,6 +656,88 @@ class TEI_Story_Shortcode {
             }
         }
         </style>
+        
+        <script>
+        jQuery(document).ready(function($) {
+            var storyWrapper = $('#<?php echo esc_js($story_id); ?>');
+            var chapters = storyWrapper.find('.tei-story-chapter');
+            var currentIndex = 0;
+            var totalChapters = chapters.length;
+            
+            // Esconde todos exceto o primeiro
+            chapters.hide();
+            chapters.eq(0).show().addClass('active');
+            
+            // Navegação por setas
+            storyWrapper.on('click', '.swiper-button-next', function() {
+                if (currentIndex < totalChapters - 1) {
+                    chapters.eq(currentIndex).fadeOut(300).removeClass('active');
+                    currentIndex++;
+                    chapters.eq(currentIndex).fadeIn(300).addClass('active');
+                    updatePagination();
+                }
+            });
+            
+            storyWrapper.on('click', '.swiper-button-prev', function() {
+                if (currentIndex > 0) {
+                    chapters.eq(currentIndex).fadeOut(300).removeClass('active');
+                    currentIndex--;
+                    chapters.eq(currentIndex).fadeIn(300).addClass('active');
+                    updatePagination();
+                }
+            });
+            
+            // Navegação por pontos
+            function createPagination() {
+                var pagination = storyWrapper.find('.swiper-pagination');
+                pagination.empty();
+                for (var i = 0; i < totalChapters; i++) {
+                    var bullet = $('<span class="swiper-pagination-bullet" data-index="' + i + '"></span>');
+                    if (i === 0) bullet.addClass('swiper-pagination-bullet-active');
+                    pagination.append(bullet);
+                }
+            }
+            
+            function updatePagination() {
+                storyWrapper.find('.swiper-pagination-bullet').removeClass('swiper-pagination-bullet-active');
+                storyWrapper.find('.swiper-pagination-bullet').eq(currentIndex).addClass('swiper-pagination-bullet-active');
+            }
+            
+            storyWrapper.on('click', '.swiper-pagination-bullet', function() {
+                var index = $(this).data('index');
+                chapters.eq(currentIndex).fadeOut(300).removeClass('active');
+                currentIndex = index;
+                chapters.eq(currentIndex).fadeIn(300).addClass('active');
+                updatePagination();
+            });
+            
+            // Inicializa paginação
+            createPagination();
+            
+            // Tela cheia
+            storyWrapper.on('click', '.tei-story-fullscreen', function() {
+                if (!document.fullscreenElement) {
+                    storyWrapper[0].requestFullscreen();
+                } else {
+                    document.exitFullscreen();
+                }
+            });
+            
+            // Autoplay se configurado
+            <?php if ($config['autoplay']): ?>
+            setInterval(function() {
+                if (currentIndex < totalChapters - 1) {
+                    storyWrapper.find('.swiper-button-next').click();
+                } else {
+                    chapters.eq(currentIndex).fadeOut(300).removeClass('active');
+                    currentIndex = 0;
+                    chapters.eq(currentIndex).fadeIn(300).addClass('active');
+                    updatePagination();
+                }
+            }, <?php echo intval($config['autoplay_speed']); ?>);
+            <?php endif; ?>
+        });
+        </script>
         <?php
         return ob_get_clean();
     }
