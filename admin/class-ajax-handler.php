@@ -13,37 +13,21 @@ if (!defined('ABSPATH')) {
 class TEI_Ajax_Handler {
     
     /**
-     * Obtém coleções do Tainacan
+     * Obtém coleções do Tainacan com contagem de itens
      */
     public function get_collections() {
-        // Verifica nonce
         if (!check_ajax_referer('tei_admin', 'nonce', false)) {
             wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
             return;
         }
         
-        // Verifica permissões para ações administrativas
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => __('Permissão negada', 'tainacan-explorador')]);
-            return;
-        }
-        
         try {
-            // Cache de coleções
-            $cache_key = 'tei_collections_list';
-            $collections = TEI_Cache_Manager::get($cache_key);
+            $api_handler = new TEI_API_Handler();
+            $collections = $api_handler->get_collections();
             
-            if ($collections === false) {
-                $api_handler = new TEI_API_Handler();
-                $collections = $api_handler->get_collections();
-                
-                if (is_wp_error($collections)) {
-                    wp_send_json_error(['message' => $collections->get_error_message()]);
-                    return;
-                }
-                
-                // Cache por 1 hora
-                TEI_Cache_Manager::set($cache_key, $collections, HOUR_IN_SECONDS);
+            if (is_wp_error($collections)) {
+                wp_send_json_error(['message' => $collections->get_error_message()]);
+                return;
             }
             
             wp_send_json_success($collections);
@@ -57,15 +41,8 @@ class TEI_Ajax_Handler {
      * Obtém metadados de uma coleção
      */
     public function get_metadata() {
-        // Verifica nonce
         if (!check_ajax_referer('tei_admin', 'nonce', false)) {
             wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
-            return;
-        }
-        
-        // Verifica permissões
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => __('Permissão negada', 'tainacan-explorador')]);
             return;
         }
         
@@ -80,7 +57,6 @@ class TEI_Ajax_Handler {
             // Limpa cache para buscar dados atualizados
             TEI_Cache_Manager::delete('metadata_' . $collection_id);
             
-            // Usa TEI_API_Handler
             $api_handler = new TEI_API_Handler();
             $metadata = $api_handler->get_collection_metadata($collection_id);
             
@@ -89,39 +65,23 @@ class TEI_Ajax_Handler {
                 return;
             }
             
-            // Adiciona campos especiais sem duplicar
-            $special_fields = [];
-            $existing_slugs = array_column($metadata, 'slug');
-            
-            // Campos especiais do Tainacan
-            $special_field_definitions = [
-                'thumbnail' => ['id' => 'thumbnail', 'name' => __('Miniatura', 'tainacan-explorador'), 'type' => 'image', 'slug' => 'thumbnail'],
-                'document' => ['id' => 'document', 'name' => __('Documento', 'tainacan-explorador'), 'type' => 'attachment', 'slug' => 'document'],
-                '_attachments' => ['id' => '_attachments', 'name' => __('Anexos', 'tainacan-explorador'), 'type' => 'attachments', 'slug' => '_attachments'],
-                'title' => ['id' => 'title', 'name' => __('Título', 'tainacan-explorador'), 'type' => 'text', 'slug' => 'title'],
-                'description' => ['id' => 'description', 'name' => __('Descrição', 'tainacan-explorador'), 'type' => 'textarea', 'slug' => 'description']
+            // Adiciona campos especiais
+            $special_fields = [
+                ['id' => 'thumbnail', 'name' => __('Miniatura', 'tainacan-explorador'), 'type' => 'image', 'slug' => 'thumbnail'],
+                ['id' => 'document', 'name' => __('Documento', 'tainacan-explorador'), 'type' => 'attachment', 'slug' => 'document'],
+                ['id' => 'title', 'name' => __('Título', 'tainacan-explorador'), 'type' => 'text', 'slug' => 'title'],
+                ['id' => 'description', 'name' => __('Descrição', 'tainacan-explorador'), 'type' => 'textarea', 'slug' => 'description']
             ];
             
-            foreach ($special_field_definitions as $key => $field) {
-                if (!in_array($key, $existing_slugs)) {
-                    // Verifica também por nome para evitar duplicação
-                    $name_exists = false;
-                    foreach ($metadata as $meta) {
-                        if (strcasecmp($meta['name'], $field['name']) === 0) {
-                            $name_exists = true;
-                            break;
-                        }
-                    }
-                    
-                    if (!$name_exists) {
-                        $special_fields[] = $field;
-                    }
+            // Remove duplicatas
+            $existing_ids = array_column($metadata, 'id');
+            foreach ($special_fields as $field) {
+                if (!in_array($field['id'], $existing_ids)) {
+                    $metadata[] = $field;
                 }
             }
             
-            $metadata = array_merge($metadata, $special_fields);
-            
-            // Obtém mapeamentos existentes
+            // Obtém mapeamentos existentes para TODAS as visualizações
             $existing_mappings = [];
             foreach (['map', 'timeline', 'story'] as $type) {
                 $mapping = TEI_Metadata_Mapper::get_mapping($collection_id, $type);
@@ -141,18 +101,11 @@ class TEI_Ajax_Handler {
     }
     
     /**
-     * Salva mapeamento
+     * Salva mapeamento - PERMITE MÚLTIPLOS POR COLEÇÃO
      */
     public function save_mapping() {
-        // Verifica nonce
         if (!check_ajax_referer('tei_admin', 'nonce', false)) {
             wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
-            return;
-        }
-        
-        // Verifica permissões
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => __('Permissão negada', 'tainacan-explorador')]);
             return;
         }
         
@@ -172,13 +125,13 @@ class TEI_Ajax_Handler {
         $sanitized_mapping = [];
         if (is_array($mapping_data)) {
             foreach ($mapping_data as $key => $value) {
-                // Preserva o valor original se for ID numérico, senão sanitiza
                 $sanitized_key = sanitize_key($key);
+                // Preserva IDs numéricos e strings
                 $sanitized_mapping[$sanitized_key] = is_numeric($value) ? $value : sanitize_text_field($value);
             }
         }
         
-        // Sanitiza configurações de visualização
+        // Sanitiza configurações
         $sanitized_settings = [];
         if (is_array($visualization_settings)) {
             foreach ($visualization_settings as $key => $value) {
@@ -232,15 +185,8 @@ class TEI_Ajax_Handler {
      * Obtém todos os mapeamentos
      */
     public function get_all_mappings() {
-        // Verifica nonce
         if (!check_ajax_referer('tei_admin', 'nonce', false)) {
             wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
-            return;
-        }
-        
-        // Verifica permissões
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => __('Permissão negada', 'tainacan-explorador')]);
             return;
         }
         
@@ -256,15 +202,8 @@ class TEI_Ajax_Handler {
      * Deleta mapeamento
      */
     public function delete_mapping() {
-        // Verifica nonce
         if (!check_ajax_referer('tei_admin', 'nonce', false)) {
             wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
-            return;
-        }
-        
-        // Verifica permissões
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => __('Permissão negada', 'tainacan-explorador')]);
             return;
         }
         
@@ -285,7 +224,7 @@ class TEI_Ajax_Handler {
             return;
         }
         
-        // Limpa cache da coleção se temos a informação
+        // Limpa cache da coleção
         if ($mapping_info && isset($mapping_info['collection_id'])) {
             TEI_Cache_Manager::clear_collection_cache($mapping_info['collection_id']);
         }
@@ -297,15 +236,8 @@ class TEI_Ajax_Handler {
      * Limpa cache de coleção
      */
     public function clear_collection_cache() {
-        // Verifica nonce
         if (!check_ajax_referer('tei_admin', 'nonce', false)) {
             wp_send_json_error(['message' => __('Nonce inválido', 'tainacan-explorador')]);
-            return;
-        }
-        
-        // Verifica permissões
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => __('Permissão negada', 'tainacan-explorador')]);
             return;
         }
         
@@ -313,7 +245,7 @@ class TEI_Ajax_Handler {
         
         if ($collection_id) {
             TEI_Cache_Manager::clear_collection_cache($collection_id);
-            wp_send_json_success(['message' => __('Cache limpo com sucesso!', 'tainacan-explorador')]);
+            wp_send_json_success(['message' => __('Cache da coleção limpo!', 'tainacan-explorador')]);
         } else {
             TEI_Cache_Manager::clear_all();
             wp_send_json_success(['message' => __('Todo o cache foi limpo!', 'tainacan-explorador')]);
